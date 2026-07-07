@@ -34,6 +34,17 @@
 /* Local CAN module object */
 static CO_CANmodule_t* CANModule_local = NULL; /* Local instance of global CAN module */
 
+/* Raw-Frame-Hook: Frames, die keinem CANopen-RX-Puffer zugeordnet werden
+ * koennen, gehen an die Anwendung (z.B. CANbossTouch PoC-Hallensteuerung,
+ * App/canboss_poc.c). Laeuft im FDCAN-ISR-Kontext — kurz halten!
+ * Schwacher Default: Frame verwerfen. */
+__attribute__((weak)) void
+CO_CANrawRxHook(uint16_t ident, const uint8_t* data, uint8_t dlc) {
+    (void)ident;
+    (void)data;
+    (void)dlc;
+}
+
 /* CAN masks for identifiers */
 #define CANID_MASK 0x07FF /*!< CAN standard ID mask */
 #define FLAG_RTR   0x8000 /*!< RTR flag, part of identifier */
@@ -587,6 +598,9 @@ prv_read_can_received_msg(CAN_HandleTypeDef* hcan, uint32_t fifo, uint32_t fifo_
     /* Call specific function, which will process the message */
     if (messageFound && buffer != NULL && buffer->CANrx_callback != NULL) {
         buffer->CANrx_callback(buffer->object, (void*)&rcvMsg);
+    } else if (!messageFound && (rcvMsgIdent & FLAG_RTR) == 0U) {
+        /* Kein CANopen-Puffer zustaendig -> Raw-Frame an die Anwendung */
+        CO_CANrawRxHook((uint16_t)(rcvMsgIdent & CANID_MASK), rcvMsg.data, rcvMsg.dlc);
     }
 }
 

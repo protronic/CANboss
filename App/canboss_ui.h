@@ -23,6 +23,11 @@ extern "C" {
  * Im LVGL-Kontext nach lv_init()/Displayinit aufrufen. */
 void canboss_ui_init(void);
 
+/* Screen laden und den vorherigen (von der UI verwalteten) Screen loeschen.
+ * Auch fuer app-eigene Screens (z.B. canboss_poc), damit beim Navigieren
+ * kein LVGL-Speicher leckt. */
+void canboss_ui_load_screen(lv_obj_t* scr);
+
 /* Neuen Knoten-Screen anlegen (Header mit Zurueck-Knopf + Titel + Status,
  * scrollbare Datenpunktliste) und laden. Liefert den Listencontainer, an
  * den die Row-Fabriken anbauen. */

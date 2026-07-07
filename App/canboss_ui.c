@@ -10,6 +10,7 @@
 
 #include "canboss_ui.h"
 #include "canboss_sdo.h"
+#include "canboss_poc.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -473,13 +474,18 @@ canboss_ui_screen_begin(const canboss_node_desc_t* node) {
     lv_obj_add_flag(cb_keyboard, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_align(cb_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
 
+    canboss_ui_load_screen(scr);
+    return cont;
+}
+
+void
+canboss_ui_load_screen(lv_obj_t* scr) {
     lv_obj_t* old = cb_cur_screen;
     cb_cur_screen = scr;
     lv_screen_load(scr);
     if (old != NULL) {
         lv_obj_delete(old);
     }
-    return cont;
 }
 
 /* ------------------------------------------------------------------ */
@@ -580,6 +586,12 @@ cb_menu_node_clicked(lv_event_t* e) {
     }
 }
 
+static void
+cb_menu_poc_clicked(lv_event_t* e) {
+    (void)e;
+    canboss_poc_screen_create();
+}
+
 void
 canboss_ui_init(void) {
     cb_bindings_release();
@@ -619,10 +631,9 @@ canboss_ui_init(void) {
         lv_obj_add_event_cb(btn, cb_menu_node_clicked, LV_EVENT_CLICKED, (void*)node);
     }
 
-    lv_obj_t* old = cb_cur_screen;
-    cb_cur_screen = scr;
-    lv_screen_load(scr);
-    if (old != NULL) {
-        lv_obj_delete(old);
-    }
+    /* PoC-Hallenlichtsteuerung (JSON-getriebener Screen, Raw-CAN-Bitmasken) */
+    lv_obj_t* poc_btn = lv_list_add_button(list, LV_SYMBOL_HOME, "Hallenlicht (PoC)");
+    lv_obj_add_event_cb(poc_btn, cb_menu_poc_clicked, LV_EVENT_CLICKED, NULL);
+
+    canboss_ui_load_screen(scr);
 }

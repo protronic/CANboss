@@ -1,5 +1,5 @@
 # =============================================================================
-# CANbossTouch - Riverdi 5.0" STM32U599 Touchpanel als CANopen-Bediengeraet
+# CANbossTouch - STM32H573I-DK + gen4-FT813-70CTP-CLB als CANopen-Bediengeraet
 #
 # Build mit der STMicroelectronics-Toolchain gnu-tools-for-stm32
 # (https://github.com/STMicroelectronics/gnu-tools-for-stm32, in
@@ -43,7 +43,7 @@ BIN = $(CP) -O binary -S
 PYTHON ?= python3
 
 # -----------------------------------------------------------------------------
-# MCU: STM32U599NJHxQ (Cortex-M33, FPU fpv5-sp-d16)
+# MCU: STM32H573IIK3Q (Cortex-M33, FPU fpv5-sp-d16)
 # -----------------------------------------------------------------------------
 CPU = -mcpu=cortex-m33
 FPU = -mfpu=fpv5-sp-d16
@@ -52,7 +52,7 @@ MCU = $(CPU) -mthumb $(FPU) $(FLOAT-ABI)
 
 C_DEFS = \
 -DUSE_HAL_DRIVER \
--DSTM32U599xx \
+-DSTM32H573xx \
 -DCO_DRIVER_CUSTOM
 
 AS_DEFS =
@@ -62,7 +62,7 @@ AS_DEFS =
 # -----------------------------------------------------------------------------
 CORE_SOURCES = $(wildcard Core/Src/*.c)
 
-HAL_SOURCES = $(filter-out %_template.c, $(wildcard Drivers/STM32U5xx_HAL_Driver/Src/*.c))
+HAL_SOURCES = $(filter-out %_template.c, $(wildcard Drivers/STM32H5xx_HAL_Driver/Src/*.c))
 
 FREERTOS_DIR = Middlewares/Third_Party/FreeRTOS/Source
 FREERTOS_SOURCES = \
@@ -105,16 +105,16 @@ $(CANOPEN_SOURCES) \
 $(CANOPEN_PORT_SOURCES) \
 $(APP_SOURCES)
 
-ASM_SOURCES = Startup/startup_stm32u599njhxq.s
+ASM_SOURCES = Startup/startup_stm32h573xx.s
 
 # -----------------------------------------------------------------------------
 # Includes
 # -----------------------------------------------------------------------------
 C_INCLUDES = \
 -ICore/Inc \
--IDrivers/STM32U5xx_HAL_Driver/Inc \
--IDrivers/STM32U5xx_HAL_Driver/Inc/Legacy \
--IDrivers/CMSIS/Device/ST/STM32U5xx/Include \
+-IDrivers/STM32H5xx_HAL_Driver/Inc \
+-IDrivers/STM32H5xx_HAL_Driver/Inc/Legacy \
+-IDrivers/CMSIS/Device/ST/STM32H5xx/Include \
 -IDrivers/CMSIS/Include \
 -IMiddlewares/Third_Party/CMSIS/RTOS2/Include \
 -I$(FREERTOS_DIR)/CMSIS_RTOS_V2 \
@@ -140,7 +140,7 @@ endif
 
 CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
 
-LDSCRIPT = STM32U599NJHXQ_FLASH.ld
+LDSCRIPT = STM32H573IIKXQ_FLASH.ld
 
 LIBS = -lc -lm -lnosys
 LIBDIR =
@@ -157,6 +157,7 @@ all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET
 # und ist eingecheckt; nach Aenderungen an eds/ neu ausfuehren)
 gen:
 	$(PYTHON) tools/eds2lvgl.py --network eds/network.json --out App/generated
+	$(PYTHON) tools/poc2lvgl.py --config poc --out App/generated
 
 OBJECTS = $(addprefix $(BUILD_DIR)/,$(C_SOURCES:.c=.o))
 OBJECTS += $(addprefix $(BUILD_DIR)/,$(ASM_SOURCES:.s=.o))

@@ -3,6 +3,13 @@
  ******************************************************************************
  * @file           : main.c
  * @brief          : Main program body
+ *
+ * CANbossTouch auf dem STM32H573I-DK mit gen4-FT813-70CTP-CLB (FT81x/EVE2
+ * ueber SPI2). Das FT813 dient als "dummer Framebuffer": LVGL rendert in
+ * SRAM-Streifenpuffer und der Flush-Callback schiebt die Rechtecke per SPI
+ * in das 1-MiB-RAM_G, das eine statische Displayliste auf das 800x480-Panel
+ * scannt. Touch kommt aus der kapazitiven Touch-Engine des FT813 (gepollt,
+ * gleicher SPI-Bus, gleicher LVGL-Task). CANopen laeuft auf FDCAN2.
  ******************************************************************************
  * @attention
  *
@@ -19,30 +26,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os2.h"
-#include "adc.h"
-#include "mdf.h"
-#include "cordic.h"
-#include "crc.h"
-#include "dac.h"
-#include "dcache.h"
-#include "dma2d.h"
 #include "fdcan.h"
-#include "flash.h"
-#include "gpu2d.h"
-#include "gtzc.h"
-#include "hash.h"
-#include "i2c.h"
 #include "icache.h"
-#include "lptim.h"
-#include "ltdc.h"
-#include "memorymap.h"
-#include "octospi.h"
-#include "rng.h"
-#include "rtc.h"
 #include "spi.h"
 #include "tim.h"
-#include "usart.h"
-#include "usb_otg.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -50,6 +37,7 @@
 #include "lvgl/lvgl.h"
 #include "lvgl_port_touch.h"
 #include "lvgl_port_display.h"
+#include "ft81x.h"
 #include "CO_app_STM32.h"
 #include "canboss_ui.h"
 #include "canboss_sdo.h"
@@ -73,21 +61,18 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-/* CANopenNode-Instanz des Touchpanels (SDO-Client/NMT via FDCAN1, 1ms via TIM7) */
+/* CANopenNode-Instanz des Touchpanels (SDO-Client/NMT via FDCAN2, 1ms via TIM7) */
 static CANopenNodeSTM32 canOpenNodeSTM32;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void PeriphCommonClock_Config(void);
-static void SystemPower_Config(void);
 void MX_FREERTOS_Init(void);
-static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
-#include "lvgl/src/draw/nema_gfx/lv_draw_nema_gfx.h"
+
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
@@ -115,79 +100,45 @@ int main(void)
 	/* Configure the system clock */
 	SystemClock_Config();
 
-	/* Configure the peripherals common clocks */
-	PeriphCommonClock_Config();
-
-	/* Configure the System Power */
-	SystemPower_Config();
-
 	/* USER CODE BEGIN SysInit */
 
 	/* USER CODE END SysInit */
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
-	MX_ADC1_Init();
-	MX_ADC2_Init();
-	MX_CORDIC_Init();
-	MX_CRC_Init();
-	MX_DAC1_Init();
-	MX_DCACHE1_Init();
-	// MX_DCACHE2_Init();
-	MX_DMA2D_Init();
-	MX_FDCAN1_Init();
-	MX_GPU2D_Init();
-	MX_HASH_Init();
-	MX_I2C1_Init();
-	MX_I2C2_Init();
-	MX_I2C4_Init();
 	MX_ICACHE_Init();
-	MX_LPTIM2_Init();
-	MX_LTDC_Init();
-	MX_OCTOSPI1_Init();
-	MX_RNG_Init();
-	MX_RTC_Init();
-	MX_SPI1_Init();
 	MX_SPI2_Init();
-	MX_TIM3_Init();
-	MX_TIM5_Init();
-	MX_TIM6_Init();
-	MX_TIM8_Init();
-	MX_TIM15_Init();
-	MX_USART1_UART_Init();
-	MX_USART3_UART_Init();
-	MX_USART6_UART_Init();
-	MX_USB_OTG_HS_USB_Init();
-//	MX_FLASH_Init();    /*If enabled Nema (NeoChrome) can't read the images and fonts from flash*/
+	MX_FDCAN2_Init();
 
-	/* Initialize interrupts */
-	MX_NVIC_Init();
 	/* USER CODE BEGIN 2 */
-	if (HAL_TIM_PWM_Start(&htim15, TIM_CHANNEL_1) != HAL_OK)
+	/* FT813 hochfahren: Panel-Timings, leere Displayliste, Backlight aus */
+	if (ft81x_init() != FT81X_OK)
 	{
-		/* PWM Generation Error */
 		Error_Handler();
 	}
 
-	/* reset display */
-	HAL_GPIO_WritePin(LCD_DISP_RESET_GPIO_Port, LCD_DISP_RESET_Pin, GPIO_PIN_SET);
-
 	/* initialize LVGL framework */
 	lv_init();
-//	while(1);
 	lv_tick_set_cb(HAL_GetTick);
 
-	/* initialize display and touchscreen */
+	/* initialize display and touchscreen (FT813: Framebuffer + Touch-Engine) */
 	lvgl_display_init();
 	lvgl_touchscreen_init();
 
-	/* CANopen-Stack starten: FDCAN1 + TIM7 (1ms) */
+	/* Framebuffer schwarz, statische Scanout-Displayliste, volle SPI-Rate,
+	 * Backlight an — das Panel zeigt schwarz, bis LVGL das erste Bild malt */
+	ft81x_clear_framebuffer(0x0000);
+	ft81x_show_framebuffer();
+	ft81x_set_spi_run_speed();
+	ft81x_set_backlight(96);
+
+	/* CANopen-Stack starten: FDCAN2 + TIM7 (1ms) */
 	MX_TIM7_Init();
-	canOpenNodeSTM32.CANHandle = &hfdcan1;
-	canOpenNodeSTM32.HWInitFunction = MX_FDCAN1_Init;
+	canOpenNodeSTM32.CANHandle = &hfdcan2;
+	canOpenNodeSTM32.HWInitFunction = MX_FDCAN2_Init;
 	canOpenNodeSTM32.timerHandle = &htim7;
 	canOpenNodeSTM32.desiredNodeID = CANBOSS_NODE_ID;
-	canOpenNodeSTM32.baudrate = 500; /* kbit/s, muss zur FDCAN1-Bittiming-Konfiguration passen */
+	canOpenNodeSTM32.baudrate = 500; /* kbit/s, muss zur FDCAN2-Bittiming-Konfiguration passen */
 	canopen_app_init(&canOpenNodeSTM32);
 
 	/* aus den EDS-Dateien generierte Bedienoberflaeche laden */
@@ -216,6 +167,11 @@ int main(void)
 
 /**
  * @brief System Clock Configuration
+ *
+ * HSE 25 MHz (Quarz X3 auf dem DK) -> PLL1 -> 250 MHz Sysclk bei
+ * Voltage-Scale 0. PLL1Q liefert ebenfalls 250 MHz als SPI2-Kerneltakt;
+ * FDCAN2 laeuft direkt vom 25-MHz-HSE (saubere CAN-Bittimings).
+ *
  * @retval None
  */
 void SystemClock_Config(void)
@@ -225,37 +181,25 @@ void SystemClock_Config(void)
 
 	/** Configure the main internal regulator output voltage
 	 */
-	if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
+	if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE0) != HAL_OK)
 	{
 		Error_Handler();
 	}
 
-	/** Configure LSE Drive Capability
+	/** Initializes the RCC Oscillators according to the specified parameters
+	 * in the RCC_OscInitTypeDef structure.
 	 */
-	HAL_PWR_EnableBkUpAccess();
-	__HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
-
-	/** Initializes the CPU, AHB and APB buses clocks
-	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSI
-			|RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE
-			|RCC_OSCILLATORTYPE_LSE;
-	RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
-	RCC_OscInitStruct.LSEState = RCC_LSE_ON;
-	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-	RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
-	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-	RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-	RCC_OscInitStruct.LSIDiv = RCC_LSI_DIV1;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
 	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-	RCC_OscInitStruct.PLL.PLLMBOOST = RCC_PLLMBOOST_DIV1;
-	RCC_OscInitStruct.PLL.PLLM = 4;
-	RCC_OscInitStruct.PLL.PLLN = 80;
-	RCC_OscInitStruct.PLL.PLLP = 8;
-	RCC_OscInitStruct.PLL.PLLQ = 2;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLL1_SOURCE_HSE;
+	RCC_OscInitStruct.PLL.PLLM = 5;   /* 25 MHz / 5 = 5 MHz Referenz */
+	RCC_OscInitStruct.PLL.PLLN = 100; /* 500 MHz VCO */
+	RCC_OscInitStruct.PLL.PLLP = 2;   /* 250 MHz Sysclk */
+	RCC_OscInitStruct.PLL.PLLQ = 2;   /* 250 MHz SPI2-Kerneltakt */
 	RCC_OscInitStruct.PLL.PLLR = 2;
-	RCC_OscInitStruct.PLL.PLLRGE = RCC_PLLVCIRANGE_0;
+	RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_2;
+	RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1_VCORANGE_WIDE;
 	RCC_OscInitStruct.PLL.PLLFRACN = 0;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
 	{
@@ -273,71 +217,10 @@ void SystemClock_Config(void)
 	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 	RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
 	{
 		Error_Handler();
 	}
-
-	/** MCO configuration
-	 */
-	HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_SYSCLK, RCC_MCODIV_1);
-}
-
-/**
- * @brief Peripherals Common Clock Configuration
- * @retval None
- */
-void PeriphCommonClock_Config(void)
-{
-}
-
-/**
- * @brief Power Configuration
- * @retval None
- */
-static void SystemPower_Config(void)
-{
-	HAL_PWREx_EnableVddIO2();
-
-	PWR_PVDTypeDef sConfigPVD = {0};
-
-	/*
-	 * PVD Configuration
-	 */
-	sConfigPVD.PVDLevel = PWR_PVDLEVEL_0;
-	sConfigPVD.Mode = PWR_PVD_MODE_NORMAL;
-	HAL_PWR_ConfigPVD(&sConfigPVD);
-
-	/*
-	 * Enable the PVD Output
-	 */
-	HAL_PWR_EnablePVD();
-
-	/*
-	 * Disable the internal Pull-Up in Dead Battery pins of UCPD peripheral
-	 */
-	HAL_PWREx_DisableUCPDDeadBattery();
-
-	/*
-	 * Switch to SMPS regulator instead of LDO
-	 */
-	if (HAL_PWREx_ConfigSupply(PWR_SMPS_SUPPLY) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	/* USER CODE BEGIN PWR */
-	/* USER CODE END PWR */
-}
-
-/**
- * @brief NVIC Configuration.
- * @retval None
- */
-static void MX_NVIC_Init(void)
-{
-	/* EXTI6_IRQn interrupt configuration */
-	HAL_NVIC_SetPriority(EXTI6_IRQn, 5, 0);
-	HAL_NVIC_EnableIRQ(EXTI6_IRQn);
 }
 
 /* USER CODE BEGIN 4 */

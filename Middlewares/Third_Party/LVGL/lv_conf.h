@@ -237,7 +237,7 @@
      * - LV_NEMA_HAL_STM32 */
     #define LV_USE_NEMA_HAL LV_NEMA_HAL_STM32
     #if LV_USE_NEMA_HAL == LV_NEMA_HAL_STM32
-        #define LV_NEMA_STM32_HAL_INCLUDE <stm32u5xx_hal.h>
+        #define LV_NEMA_STM32_HAL_INCLUDE <stm32h5xx_hal.h>
     #endif
 
     /*Enable Vector Graphics Operations. Available only if NemaVG library is present*/
@@ -1364,7 +1364,7 @@
 #define LV_USE_RENESAS_GLCDC    0
 
 /** Driver for ST LTDC */
-#define LV_USE_ST_LTDC    1
+#define LV_USE_ST_LTDC    0
 #if LV_USE_ST_LTDC
     /* Only used for partial. */
     #define LV_ST_LTDC_USE_DMA2D_FLUSH 1

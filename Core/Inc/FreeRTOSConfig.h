@@ -53,10 +53,10 @@
 extern uint32_t SystemCoreClock;
 #endif
 #ifndef CMSIS_device_header
-#define CMSIS_device_header "stm32u5xx.h"
+#define CMSIS_device_header "stm32h5xx.h"
 #endif /* CMSIS_device_header */
 
-/*-------------------- STM32U5 specific defines -------------------*/
+/*-------------------- STM32H5 specific defines -------------------*/
 #define configENABLE_TRUSTZONE                   0
 #define configRUN_FREERTOS_SECURE_ONLY           0
 #define configENABLE_FPU                         0

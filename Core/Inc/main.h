@@ -3,7 +3,7 @@
   ******************************************************************************
   * @file           : main.h
   * @brief          : Header for main.c file.
-  *                   This file contains the common defines of the application.
+  *                   CANbossTouch auf STM32H573I-DK + gen4-FT813-70CTP-CLB.
   ******************************************************************************
   * @attention
   *
@@ -27,7 +27,7 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32u5xx_hal.h"
+#include "stm32h5xx_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -57,29 +57,28 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define LCD_DISP_RESET_Pin GPIO_PIN_7
-#define LCD_DISP_RESET_GPIO_Port GPIOH
-#define CTP_RST_Pin GPIO_PIN_3
-#define CTP_RST_GPIO_Port GPIOE
-#define CTP_INT_Pin GPIO_PIN_6
-#define CTP_INT_GPIO_Port GPIOE
-#define CTP_INT_EXTI_IRQn EXTI6_IRQn
-#define USB_PWR_EN_Pin GPIO_PIN_8
-#define USB_PWR_EN_GPIO_Port GPIOG
-#define USB_OVERCURRENT_Pin GPIO_PIN_0
-#define USB_OVERCURRENT_GPIO_Port GPIOJ
-#define R_RST_Pin GPIO_PIN_4
-#define R_RST_GPIO_Port GPIOF
-#define R_CS_Pin GPIO_PIN_1
-#define R_CS_GPIO_Port GPIOG
-#define R_INT_Pin GPIO_PIN_4
-#define R_INT_GPIO_Port GPIOC
+/*
+ * gen4-FT813-70CTP-CLB am Arduino-Header des STM32H573I-DK
+ * (Pinmap wie examples/gen4-ft813-70ctp-h573i-dk im embassy-Repo):
+ *
+ *   SCK  = D13 = PI1  (SPI2_SCK)     MISO = D12 = PI2  (SPI2_MISO)
+ *   MOSI = D11 = PB15 (SPI2_MOSI)    /CS  = D10 = PA3  (GPIO)
+ *   PD   = D9  = PA8  (GPIO)         INT  = D8  = PG8  (unbenutzt, Touch wird gepollt)
+ *
+ * FDCAN2 ebenfalls am Arduino-Header, das DK hat keinen eigenen
+ * CAN-Transceiver (extern 3.3V, z.B. SN65HVD230 / TJA1051T/3):
+ *
+ *   CAN RX = D3  = PB5 (FDCAN2_RX)   CAN TX = D15 = PB6 (FDCAN2_TX)
+ */
+#define FT813_CS_Pin GPIO_PIN_3
+#define FT813_CS_GPIO_Port GPIOA
+#define FT813_PD_Pin GPIO_PIN_8
+#define FT813_PD_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 #ifndef CANBOSS_NODE_ID
 #define CANBOSS_NODE_ID 127 /* CANopen-Node-ID des Touchpanels */
 #endif
-
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

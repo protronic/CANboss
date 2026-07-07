@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2023 STMicroelectronics.
+  * Copyright (c) 2024 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -32,13 +32,13 @@ extern "C" {
 
 /* USER CODE END Includes */
 
-extern FDCAN_HandleTypeDef hfdcan1;
+extern FDCAN_HandleTypeDef hfdcan2;
 
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
 
-void MX_FDCAN1_Init(void);
+void MX_FDCAN2_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
@@ -49,4 +49,3 @@ void MX_FDCAN1_Init(void);
 #endif
 
 #endif /* __FDCAN_H__ */
-
