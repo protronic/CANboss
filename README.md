@@ -17,6 +17,11 @@ Kombiniert aus:
 Die Vorgängerversion für das Riverdi 5.0" STM32U599-Display (LTDC) liegt in
 der Git-Historie (Branch-Stand vor dem H573-Port).
 
+**Rust-Port**: Ein vollständiger Port dieses Bediengeräts auf
+Rust/embassy/oxivgl (EDS-Screens, eigener SDO-Client, PoC-Hallenlicht)
+liegt im embassy-Repo unter `examples/gen4-ft813-70ctp-h573i-dk`
+(Binary `canboss_touch`).
+
 ## Hardware-Verdrahtung (Arduino-Header des STM32H573I-DK)
 
 | Signal (gen4-PA/gen4-IB) | Arduino | MCU-Pin | Funktion |
