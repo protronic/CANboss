@@ -123,7 +123,7 @@ Ergebnis: `build/CANbossTouch.elf` / `.hex` / `.bin` (flashen z. B. mit
 STM32CubeProgrammer).
 
 Submodule: `Middlewares/Third_Party/LVGL/lvgl` (LVGL 9.5) und
-`Middlewares/CANopen/CANopenNode` (CANopenNode v4.1).
+`Middlewares/CANopen/CANopenNode` (CANopenNode v4, **protronic-Fork** github.com/protronic/CANopenNode).
 
 ## Hardware / CAN
 
@@ -218,7 +218,7 @@ Core/                   MCU-Code (STM32H573I-DK, FT81x, Peripherie, FreeRTOS-Sta
   Src/ft81x.c           FT813-Treiber (SPI2, RAM_G-Framebuffer, Touch)
 Drivers/                STM32H5 HAL + CMSIS (Device H5)
 Middlewares/
-  CANopen/CANopenNode        CANopenNode v4 (Submodul)
+  CANopen/CANopenNode        CANopenNode v4 (Submodul, protronic-Fork)
   CANopen/CANopenNode_STM32  STM32-FDCAN-Port (+ CO_CANrawRxHook fuer PoC)
   Third_Party/LVGL           lv_conf.h + LVGL (Submodul)
   Third_Party/FreeRTOS       FreeRTOS-Kernel + CMSIS-RTOS2
