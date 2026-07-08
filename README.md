@@ -56,11 +56,15 @@ Zur Laufzeit:
 
 | EDS DataType / AccessType | LVGL-Widget |
 |---|---|
-| `ro` / `const` (alle Typen) | Wertanzeige (Label) |
+| Integer `ro`/`const` mit `LowLimit`+`HighLimit` | Wertanzeige + `lv_bar` (Balken im Limitbereich) |
+| `ro` / `const` sonstige | Wertanzeige (Label) |
 | `BOOLEAN` `rw` | `lv_switch` |
-| `INTEGER8..32`, `UNSIGNED8..32` `rw` | `lv_spinbox` mit Grenzen aus `LowLimit`/`HighLimit` |
+| Integer `rw` mit Limits genau `0..1` | `lv_switch` |
+| Integer `rw` mit Limit-Spanne ≤ 2000 | `lv_slider` mit Live-Wert (Schreiben beim Loslassen) |
+| `INTEGER8..32`, `UNSIGNED8..32` `rw` sonst | `lv_spinbox` mit Grenzen aus `LowLimit`/`HighLimit` |
+| `REAL32` `rw` | `lv_spinbox` Festkomma (3 Nachkommastellen) |
+| `REAL32` `ro` | Anzeige mit 3 Nachkommastellen |
 | `VISIBLE_STRING` `rw` | `lv_textarea` mit Bildschirmtastatur |
-| `REAL32` | Anzeige mit 3 Nachkommastellen |
 
 Die SDO-Transfers laufen in einem eigenen FreeRTOS-Worker-Task
 (`App/canboss_sdo.c`) über den CANopenNode-SDO-Client (OD 0x1280,
@@ -170,6 +174,35 @@ werden an die Anwendung durchgereicht. Das `state_script` (Rhai) des
 OxivGL-PoC wird auf dem C-Target nicht ausgeführt; das Highlight folgt
 direkt den minp-Pegeln.
 
+## Host-Build (Linux/SDL2)
+
+Die komplette Oberflaeche (EDS-Screens + PoC-Hallenlicht) laeuft auch am
+Entwicklungs-PC — Vorbild ist `examples/oxivgl-host` im embassy-Repo:
+
+```sh
+sudo apt-get install libsdl2-dev pkg-config
+make host
+./build/host/canboss_host [can-interface]   # Default: vcan0
+```
+
+- Display/Maus: LVGL-SDL-Treiber (`host/lv_conf.h`, 800×480-Fenster)
+- SDO: Mock (`host/canboss_sdo_host.c`) — Leseaufträge liefern simulierte,
+  zum EDS-Datentyp passende Werte; Geschriebenes wird zurückgelesen
+- PoC-CAN: SocketCAN (`host/canboss_poc_can_host.c`); zum Testen:
+
+```sh
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set vcan0 up
+candump vcan0                       # TX-Bitmasken beobachten
+cansend vcan0 285#0F00000000000000  # minp-Feedback -> Button-Highlights
+```
+
+Headless-Vorschau/CI: `CANBOSS_HOST_SCREENSHOT=<prefix>` rendert
+nacheinander Hauptmenü, alle Knoten-Screens (inkl. gescrolltem Listenende)
+und den PoC-Screen, schreibt BMPs und beendet sich
+(`SDL_VIDEODRIVER=dummy` funktioniert).
+
 ## Projektstruktur
 
 ```
@@ -191,8 +224,10 @@ Middlewares/
   Third_Party/FreeRTOS       FreeRTOS-Kernel + CMSIS-RTOS2
 eds/                    network.json + EDS-Dateien des Netzwerks
 poc/                    hall_config.json + can_config.json (PoC-Hallen-UI)
+host/                   Linux/SDL2-Host-Build (main, SDO-Mock, SocketCAN)
 tools/eds2lvgl.py       EDS→LVGL-Codegenerator
 tools/poc2lvgl.py       PoC-JSON→LVGL/CAN-Codegenerator
 Startup/, *.ld          Startup-Code und Linkerskript (STM32H573IIKxQ)
-Makefile                Build mit gnu-tools-for-stm32
+Makefile                Firmware-Build mit gnu-tools-for-stm32
+Makefile.host           Host-Build (make host)
 ```

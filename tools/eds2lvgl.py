@@ -13,11 +13,18 @@ App/generated/ erzeugt:
 
 Widget-Zuordnung (DataType/AccessType aus der EDS):
 
-  AccessType ro/const  -> Wertanzeige (Label, zyklischer SDO-Upload)
-  BOOLEAN rw           -> lv_switch      (SDO-Download bei Aenderung)
-  INTEGER/UNSIGNED rw  -> lv_spinbox     (Grenzen aus LowLimit/HighLimit)
-  VISIBLE_STRING rw    -> lv_textarea    (Bildschirmtastatur, Enter=Schreiben)
-  sonstige rw          -> Wertanzeige (nur lesen)
+  AccessType ro/const:
+    Integer mit EDS-Limits     -> Wert + lv_bar (Balkenanzeige im Limitbereich)
+    sonstige                   -> Wertanzeige (Label, zyklischer SDO-Upload)
+  AccessType rw/rww/rwr:
+    BOOLEAN                    -> lv_switch   (SDO-Download bei Aenderung)
+    Integer, Limits genau 0..1 -> lv_switch
+    Integer, EDS-Limits mit
+      Spanne <= 2000           -> lv_slider   (Schreiben beim Loslassen)
+    INTEGER/UNSIGNED sonst     -> lv_spinbox  (Grenzen aus LowLimit/HighLimit)
+    REAL32                     -> lv_spinbox  (Festkomma, 3 Nachkommastellen)
+    VISIBLE_STRING             -> lv_textarea (Bildschirmtastatur, Enter=Schreiben)
+    sonstige                   -> Wertanzeige (nur lesen)
 
 Aufruf:  python3 tools/eds2lvgl.py [--network eds/network.json]
                                    [--out App/generated]
@@ -115,8 +122,13 @@ def c_ident(s):
     return re.sub(r"[^A-Za-z0-9_]", "_", s)
 
 
+# Ab dieser Wertespanne wird statt eines Sliders eine Spinbox erzeugt
+# (Slider mit riesigem Bereich sind am Touchscreen nicht mehr bedienbar).
+SLIDER_MAX_SPAN = 2000
+
+
 class DataPoint:
-    def __init__(self, index, sub, name, dtype, access, low, high):
+    def __init__(self, index, sub, name, dtype, access, low, high, eds_limits):
         self.index = index
         self.sub = sub
         self.name = name
@@ -124,16 +136,30 @@ class DataPoint:
         self.access = access
         self.low = low
         self.high = high
+        # True nur, wenn die EDS selbst LowLimit UND HighLimit nennt
+        # (self.low/high sind fuer Integer sonst die Datentyp-Defaults)
+        self.eds_limits = eds_limits
 
     def widget(self):
         """Widget-Auswahl -> Name der canboss_ui-Fabrikfunktion."""
+        is_int = DTYPE_MAP_INV[self.dtype] in INT_DTYPES
+
         if self.access == "CB_ACC_RW":
             if self.dtype == "CB_DT_BOOL":
                 return "canboss_ui_add_switch_row"
-            if DTYPE_MAP_INV[self.dtype] in INT_DTYPES:
+            if is_int:
+                if self.eds_limits and (self.low, self.high) == (0, 1):
+                    return "canboss_ui_add_switch_row"
+                if self.eds_limits and 0 < self.high - self.low <= SLIDER_MAX_SPAN:
+                    return "canboss_ui_add_slider_row"
                 return "canboss_ui_add_spinbox_row"
+            if self.dtype == "CB_DT_F32":
+                return "canboss_ui_add_spinbox_row"  # Festkomma, x1000
             if self.dtype == "CB_DT_STR":
                 return "canboss_ui_add_text_row"
+        elif is_int and self.eds_limits and self.low < self.high:
+            # ro/const mit sinnvollem Wertebereich: Balkenanzeige dazu
+            return "canboss_ui_add_bar_row"
         return "canboss_ui_add_value_row"
 
 
@@ -200,6 +226,29 @@ def extract_datapoints(eds_path, include_ranges):
     return dps
 
 
+def parse_float(value, default=None):
+    """EDS-Gleitkommazahlen (fuer REAL32-Limits)."""
+    if value is None:
+        return default
+    v = str(value).strip()
+    if not v or "$" in v:
+        return default
+    try:
+        return float(int(v, 0))
+    except ValueError:
+        pass
+    try:
+        return float(v)
+    except ValueError:
+        return default
+
+
+# REAL32-Spinbox: Festkomma x1000 (3 Nachkommastellen), Default-Bereich
+# +-2000.000 (Grenze des int32-Spinbox-Werts waere +-2147483.647).
+F32_SCALE = 1000
+F32_DEFAULT_RANGE = (-2_000_000, 2_000_000)
+
+
 def make_dp(idx, sub, name, section, get):
     dtype_raw = parse_int(get(section, "DataType"))
     if dtype_raw is None or dtype_raw not in DTYPE_MAP:
@@ -209,14 +258,22 @@ def make_dp(idx, sub, name, section, get):
 
     low = parse_int(get(section, "LowLimit"))
     high = parse_int(get(section, "HighLimit"))
+    eds_limits = low is not None and high is not None
     if dtype_raw in INT_DTYPES:
         dlo, dhi = DTYPE_RANGE[dtype_raw]
         low = dlo if low is None else max(low, dlo)
         high = dhi if high is None else min(high, dhi)
+    elif dtype_raw == 0x08:  # REAL32: Limits als Festkomma x1000 in die Tabelle
+        flo = parse_float(get(section, "LowLimit"))
+        fhi = parse_float(get(section, "HighLimit"))
+        eds_limits = flo is not None and fhi is not None
+        dlo, dhi = F32_DEFAULT_RANGE
+        low = dlo if flo is None else max(int(flo * F32_SCALE), dlo)
+        high = dhi if fhi is None else min(int(fhi * F32_SCALE), dhi)
     else:
         low, high = None, None
 
-    return DataPoint(idx, sub, name.strip(), DTYPE_MAP[dtype_raw], access, low, high)
+    return DataPoint(idx, sub, name.strip(), DTYPE_MAP[dtype_raw], access, low, high, eds_limits)
 
 
 HEADER_TEMPLATE = """\

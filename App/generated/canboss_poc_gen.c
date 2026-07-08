@@ -5,7 +5,7 @@ const char* const canboss_poc_hall_name = "Sporthalle Demo";
 const char* const canboss_poc_page_title = "Lichtsteuerung";
 
 const canboss_poc_field_t canboss_poc_fields[CANBOSS_POC_FIELD_COUNT] = {
-    { "HALLE", "Tribüne" },
+    { "HALLE", "Tribuene" },
     { "FELD", "Links" },
     { "FELD", "Mitte" },
     { "FELD", "Rechts" },

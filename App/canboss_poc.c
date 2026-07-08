@@ -12,22 +12,19 @@
  *  - nichts gedrueckt   -> Release-Keepalive alle CANBOSS_POC_REFRESH_MS
  *  - RX minp-Frame      -> Pegelbits steuern das Button-Highlight
  *
- * TX laeuft ueber die HAL-TX-FIFO des vom CANopen-Stack verwalteten FDCAN
- * (per CO_LOCK_CAN_SEND gegen CANopenNode-TX serialisiert); RX kommt aus
- * CO_CANrawRxHook() im CO-Treiber (Frames, die kein CANopen-Puffer matcht,
- * ISR-Kontext -> nur Puffer + Flag, Verarbeitung im LVGL-Timer).
+ * Das CAN-Backend ist ausgelagert (canboss_poc_can_tx/_rx in canboss_poc.h):
+ * auf dem Target laeuft es ueber den CANopenNode-FDCAN
+ * (App/canboss_poc_can_stm32.c), im Host-Build ueber SocketCAN
+ * (host/canboss_poc_can_host.c). canboss_poc_can_rx() darf aus ISR-/
+ * Thread-Kontext kommen -> nur Puffer + Flag, Verarbeitung im LVGL-Timer.
  */
 
 #include "canboss_poc.h"
 #include "canboss_poc_gen.h"
 #include "canboss_ui.h"
 
-#include "main.h"
-#include "fdcan.h"
-#include "CANopen.h"
-#include "CO_app_STM32.h"
-
 #include <string.h>
+#include <stdint.h>
 
 #define POC_TX_PAYLOAD_LEN 6u
 
@@ -62,41 +59,6 @@ static volatile uint8_t poc_rx_data[8];
 static volatile uint8_t poc_rx_len;
 static volatile bool poc_rx_valid;
 
-/* ------------------------------------------------------------------ */
-/* CAN-TX ueber den CANopenNode-FDCAN                                   */
-/* ------------------------------------------------------------------ */
-
-static bool
-poc_can_send(const uint8_t payload[POC_TX_PAYLOAD_LEN]) {
-    if (!CANBOSS_POC_CAN_ENABLED || canopenNodeSTM32 == NULL || canopenNodeSTM32->canOpenStack == NULL) {
-        return false;
-    }
-
-    CO_CANmodule_t* mod = canopenNodeSTM32->canOpenStack->CANmodule;
-    FDCAN_HandleTypeDef* h = canopenNodeSTM32->CANHandle;
-    FDCAN_TxHeaderTypeDef tx_hdr;
-    bool ok = false;
-
-    tx_hdr.Identifier = CANBOSS_POC_TX_ID;
-    tx_hdr.IdType = FDCAN_STANDARD_ID;
-    tx_hdr.TxFrameType = FDCAN_DATA_FRAME;
-    tx_hdr.DataLength = FDCAN_DLC_BYTES_6;
-    tx_hdr.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-    tx_hdr.BitRateSwitch = FDCAN_BRS_OFF;
-    tx_hdr.FDFormat = FDCAN_CLASSIC_CAN;
-    tx_hdr.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-    tx_hdr.MessageMarker = 0;
-
-    /* Gleiche Sperre wie CO_CANsend(): schuetzt die TX-FIFO gegen
-     * gleichzeitige CANopenNode-Sendungen (Timer-/Task-Kontext). */
-    CO_LOCK_CAN_SEND(mod);
-    if (HAL_FDCAN_GetTxFifoFreeLevel(h) > 0) {
-        ok = (HAL_FDCAN_AddMessageToTxFifoQ(h, &tx_hdr, (uint8_t*)payload) == HAL_OK);
-    }
-    CO_UNLOCK_CAN_SEND(mod);
-    return ok;
-}
-
 /* One-Hot-Payload fuer Button-Index bauen (255/negativ = Release) */
 static void
 poc_build_payload(int16_t button_index, uint8_t payload[POC_TX_PAYLOAD_LEN]) {
@@ -118,16 +80,18 @@ static void
 poc_send_button(int16_t button_index) {
     uint8_t payload[POC_TX_PAYLOAD_LEN];
     poc_build_payload(button_index, payload);
-    (void)poc_can_send(payload);
+    if (CANBOSS_POC_CAN_ENABLED) {
+        (void)canboss_poc_can_tx(payload);
+    }
     poc_next_refresh_tick = lv_tick_get() + CANBOSS_POC_REFRESH_MS;
 }
 
 /* ------------------------------------------------------------------ */
-/* CAN-RX: Unmatched-Frame-Hook aus dem CANopenNode-Treiber (ISR!)      */
+/* CAN-RX vom Backend (ISR-/Thread-Kontext!)                            */
 /* ------------------------------------------------------------------ */
 
 void
-CO_CANrawRxHook(uint16_t ident, const uint8_t* data, uint8_t dlc) {
+canboss_poc_can_rx(uint16_t ident, const uint8_t* data, uint8_t dlc) {
     if (ident != CANBOSS_POC_MINP_ID) {
         return;
     }
@@ -295,6 +259,10 @@ poc_make_button(lv_obj_t* card, uint32_t index) {
 
 void
 canboss_poc_screen_create(void) {
+    /* SDO-Bindungen des vorherigen Screens loesen, bevor er geloescht wird
+     * (der canboss_ui-Refresh-Timer darf keine toten Widgets anfassen) */
+    canboss_ui_release_bindings();
+
     memset(poc_buttons, 0, sizeof(poc_buttons));
     memset(poc_highlight, 0, sizeof(poc_highlight));
     poc_pressed = -1;
@@ -321,7 +289,7 @@ canboss_poc_screen_create(void) {
     lv_obj_add_event_cb(back, poc_back_clicked, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t* title = lv_label_create(header);
-    lv_label_set_text_fmt(title, "%s  —  %s", canboss_poc_page_title, canboss_poc_hall_name);
+    lv_label_set_text_fmt(title, "%s - %s", canboss_poc_page_title, canboss_poc_hall_name);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_flex_grow(title, 1);
     lv_obj_set_style_pad_left(title, 12, 0);

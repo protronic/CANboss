@@ -16,7 +16,18 @@ import json
 from pathlib import Path
 
 
+# Die eingebauten LVGL-Montserrat-Fonts decken nur ASCII ab — deutsche
+# Umlaute aus dem JSON werden transliteriert (Repo-Konvention, vgl.
+# "Bediengeraet" in den EDS-Dateien).
+UMLAUTS = str.maketrans({
+    "ä": "ae", "ö": "oe", "ü": "ue",
+    "Ä": "Ae", "Ö": "Oe", "Ü": "Ue",
+    "ß": "ss", "—": "-", "–": "-",
+})
+
+
 def c_str(s: str) -> str:
+    s = s.translate(UMLAUTS)
     s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
     return '"' + s + '"'
 

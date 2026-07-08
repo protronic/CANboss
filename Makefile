@@ -13,7 +13,8 @@
 #
 # Ziele:
 #   make            Firmware bauen (build/CANbossTouch.elf/.hex/.bin)
-#   make gen        LVGL-Screens aus den EDS-Dateien neu generieren
+#   make gen        LVGL-Screens aus den EDS-/PoC-Dateien neu generieren
+#   make host       Linux/SDL2-Host-Build der UI (siehe Makefile.host)
 #   make clean
 # =============================================================================
 
@@ -180,9 +181,12 @@ $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf
 $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf
 	$(BIN) $< $@
 
+host:
+	$(MAKE) -f Makefile.host
+
 clean:
 	-rm -rf $(BUILD_DIR)
 
 -include $(shell find $(BUILD_DIR) -name '*.d' 2>/dev/null)
 
-.PHONY: all gen clean
+.PHONY: all gen host clean

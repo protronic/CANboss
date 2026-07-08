@@ -28,6 +28,11 @@ void canboss_ui_init(void);
  * kein LVGL-Speicher leckt. */
 void canboss_ui_load_screen(lv_obj_t* scr);
 
+/* Alle SDO-Widget-Bindungen des aktuellen Screens loesen (Refresh-Timer
+ * fasst danach keine Widgets mehr an). Vor canboss_ui_load_screen()
+ * aufrufen, wenn ein app-eigener Screen einen Knoten-Screen ersetzt. */
+void canboss_ui_release_bindings(void);
+
 /* Neuen Knoten-Screen anlegen (Header mit Zurueck-Knopf + Titel + Status,
  * scrollbare Datenpunktliste) und laden. Liefert den Listencontainer, an
  * den die Row-Fabriken anbauen. */
@@ -39,10 +44,20 @@ lv_obj_t* canboss_ui_screen_begin(const canboss_node_desc_t* node);
 /* Nur-Lese-Zeile: Name + zyklisch per SDO-Upload aktualisierter Wert */
 void canboss_ui_add_value_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp);
 
-/* BOOLEAN rw: Schalter, Aenderung wird per SDO-Download geschrieben */
+/* Nur-Lese-Zeile mit Balkenanzeige: Integer ro mit EDS-Limits
+ * (Wertanzeige + lv_bar im Bereich min..max) */
+void canboss_ui_add_bar_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp);
+
+/* BOOLEAN rw (oder Integer rw mit Limits genau 0..1): Schalter,
+ * Aenderung wird per SDO-Download geschrieben */
 void canboss_ui_add_switch_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp);
 
-/* Integer rw: Spinbox mit Grenzen aus der EDS, Schreiben per SDO-Download */
+/* Integer rw mit kleiner EDS-Spanne: Slider mit Live-Wertanzeige,
+ * SDO-Download beim Loslassen */
+void canboss_ui_add_slider_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp);
+
+/* Integer rw: Spinbox mit Grenzen aus der EDS, Schreiben per SDO-Download.
+ * REAL32 rw: Festkomma-Spinbox (3 Nachkommastellen, Wert x1000). */
 void canboss_ui_add_spinbox_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp);
 
 /* VISIBLE_STRING rw: Textfeld mit Bildschirmtastatur, Schreiben bei Enter */
