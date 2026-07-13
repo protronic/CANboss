@@ -3,4 +3,4 @@
 	url = https://github.com/lvgl/lvgl.git
 [submodule "Middlewares/CANopen/CANopenNode"]
 	path = Middlewares/CANopen/CANopenNode
-	url = https://github.com/CANopenNode/CANopenNode.git
+	url = https://github.com/protronic/CANopenNode.git

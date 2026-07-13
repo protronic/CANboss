@@ -4,27 +4,14 @@
 
 #include "lvgl_port_touch.h"
 #include "main.h"
-#include "i2c.h"
-#include "cmsis_os2.h"
-
-/*********************
- *      DEFINES
- *********************/
-
-#if LV_USE_OS == LV_OS_NONE
-  #define DELAY_API(ms) HAL_Delay(ms)
-#else
-  #define DELAY_API(ms) osDelay(ms)
-#endif
+#include "ft81x.h"
 
 /**********************
  *  STATIC VARIABLES
  **********************/
 
-static volatile uint8_t touch_irq = 0;
-static volatile int32_t last_x = 0;
-static volatile int32_t last_y = 0;
-static volatile lv_indev_state_t last_state = LV_INDEV_STATE_RELEASED;
+static int32_t last_x = 0;
+static int32_t last_y = 0;
 
 /**********************
  *  STATIC PROTOTYPES
@@ -40,20 +27,14 @@ lvgl_touchscreen_read (lv_indev_t *indev, lv_indev_data_t *data);
 void
 lvgl_touchscreen_init (void)
 {
-  /* 'i2c1' bus and touchscreen reset pin are already configure by CubeMX,
-   *  here we just need to reset touchscreen controller */
-  HAL_GPIO_WritePin(CTP_RST_GPIO_Port, CTP_RST_Pin, GPIO_PIN_SET);
-  DELAY_API(10);
-  HAL_GPIO_WritePin(CTP_RST_GPIO_Port, CTP_RST_Pin, GPIO_PIN_RESET);
-  DELAY_API(10);
-  HAL_GPIO_WritePin(CTP_RST_GPIO_Port, CTP_RST_Pin, GPIO_PIN_SET);
-  DELAY_API(10);
-
-  /* basic LVGL driver initialization */
+  /* Die kapazitive Touch-Engine des FT813 wurde in ft81x_init()
+   * konfiguriert (Kompatibilitaetsmodus, kontinuierlich). Kein eigener
+   * Controller, kein Interrupt-Pin: LVGL pollt REG_TOUCH_SCREEN_XY ueber
+   * den (mit dem Display geteilten) SPI-Bus — Read-Callback und
+   * Flush-Callback laufen beide im LVGL-Task, daher ohne Locking. */
   lv_indev_t * indev = lv_indev_create();
   lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(indev, lvgl_touchscreen_read);
-
 }
 
 /**********************
@@ -64,40 +45,22 @@ static void
 lvgl_touchscreen_read (lv_indev_t      *indev,
                        lv_indev_data_t *data)
 {
-  /*Use the saved coordinates if there were an interrupt*/
-  if(touch_irq)
+  ft81x_touch_t point;
+
+  LV_UNUSED(indev);
+
+  if (ft81x_touch_read(&point) == FT81X_OK && point.pressed)
     {
-      /* reset interrupt flag */
-      touch_irq = 0;
-	  data->point.x = last_x;
-	  data->point.y = last_y;
-	  data->state = last_state;
+      last_x = point.x;
+      last_y = point.y;
+      data->state = LV_INDEV_STATE_PRESSED;
     }
-    /*If there is no interrupt the touch is released*/
-    else {
-	  last_state = LV_INDEV_STATE_RELEASED;
-	}
-}
+  else
+    {
+      data->state = LV_INDEV_STATE_RELEASED;
+    }
 
-void
-HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin)
-{
-  if (GPIO_Pin == CTP_INT_Pin) {
-	  touch_irq = 1;
-
-	  HAL_StatusTypeDef status;
-	  uint8_t rx_buf[16] = {0};
-	  /* read x/y coordinates */
-	  status = HAL_I2C_Mem_Read(&hi2c1, (0x41 << 1), 0x10, 1, rx_buf, sizeof(rx_buf), 100);
-	  if (status == HAL_OK)
-	  {
-		  last_x = (rx_buf[3] & 0x0F) << 8 | rx_buf[2];
-		  last_y = (rx_buf[5] & 0x0F) << 8 | rx_buf[4];
-		  last_state = LV_INDEV_STATE_PRESSED;
-	  }
-	  else
-	  {
-		  last_state = LV_INDEV_STATE_RELEASED;
-	  }
-  }
+  /* Bei Release die letzte Position beibehalten (LVGL-Konvention) */
+  data->point.x = last_x;
+  data->point.y = last_y;
 }

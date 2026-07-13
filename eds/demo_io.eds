@@ -165,6 +165,8 @@ ObjectType=0x7
 DataType=0x0003
 AccessType=ro
 DefaultValue=0
+LowLimit=-1000
+HighLimit=1000
 PDOMapping=1
 
 [2001sub2]
@@ -173,6 +175,8 @@ ObjectType=0x7
 DataType=0x0003
 AccessType=ro
 DefaultValue=0
+LowLimit=-1000
+HighLimit=1000
 PDOMapping=1
 
 [2001sub3]
@@ -181,6 +185,8 @@ ObjectType=0x7
 DataType=0x0003
 AccessType=ro
 DefaultValue=0
+LowLimit=-1000
+HighLimit=1000
 PDOMapping=1
 
 [2001sub4]
@@ -189,6 +195,8 @@ ObjectType=0x7
 DataType=0x0003
 AccessType=ro
 DefaultValue=0
+LowLimit=-1000
+HighLimit=1000
 PDOMapping=1
 
 [2100]

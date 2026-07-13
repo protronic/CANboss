@@ -10,6 +10,7 @@
 
 #include "canboss_ui.h"
 #include "canboss_sdo.h"
+#include "canboss_poc.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -188,20 +189,33 @@ cb_bindings_release(void) {
 /* Zyklischer Refresh + Ergebnisverarbeitung (laeuft im LVGL-Task)      */
 /* ------------------------------------------------------------------ */
 
+/* REAL32 in der Spinbox: Festkomma mit 3 Nachkommastellen (Wert x1000) */
+#define CB_F32_SCALE 1000.0f
+
+static int32_t
+cb_f32_to_fixed(const cb_binding_t* b) {
+    float f = 0.0f;
+    if (b->req.len >= 4) {
+        memcpy(&f, (const void*)b->req.data, 4);
+    }
+    f *= CB_F32_SCALE;
+    return (int32_t)(f >= 0.0f ? f + 0.5f : f - 0.5f);
+}
+
 static void
 cb_apply_read_result(cb_binding_t* b) {
     char text[64];
 
-    if (b->value_label != NULL) {
-        cb_format_value(b, text, sizeof(text));
-        lv_label_set_text(b->value_label, text);
-        return;
-    }
     if (b->widget == NULL) {
+        if (b->value_label != NULL) {
+            cb_format_value(b, text, sizeof(text));
+            lv_label_set_text(b->value_label, text);
+        }
         return;
     }
-    /* Widget nicht ueberschreiben, solange der Nutzer editiert */
-    if (lv_obj_has_state(b->widget, LV_STATE_EDITED) || lv_obj_has_state(b->widget, LV_STATE_FOCUSED)) {
+    /* Widget nicht ueberschreiben, solange der Nutzer editiert/drueckt */
+    if (lv_obj_has_state(b->widget, LV_STATE_EDITED) || lv_obj_has_state(b->widget, LV_STATE_FOCUSED)
+        || lv_obj_has_state(b->widget, LV_STATE_PRESSED)) {
         return;
     }
 
@@ -215,9 +229,30 @@ cb_apply_read_result(cb_binding_t* b) {
             }
         }
     } else if (lv_obj_check_type(b->widget, &lv_spinbox_class)) {
-        int64_t v = cb_decode_int(b->req.data, b->req.len, cb_dtype_is_signed(b->dp->dtype));
-        if (v != (int64_t)lv_spinbox_get_value(b->widget)) {
-            lv_spinbox_set_value(b->widget, (int32_t)v);
+        int32_t v;
+        if (b->dp->dtype == CB_DT_F32) {
+            v = cb_f32_to_fixed(b);
+        } else {
+            v = (int32_t)cb_decode_int(b->req.data, b->req.len, cb_dtype_is_signed(b->dp->dtype));
+        }
+        if (v != lv_spinbox_get_value(b->widget)) {
+            lv_spinbox_set_value(b->widget, v);
+        }
+    } else if (lv_obj_check_type(b->widget, &lv_slider_class)) {
+        int32_t v = (int32_t)cb_decode_int(b->req.data, b->req.len, cb_dtype_is_signed(b->dp->dtype));
+        if (v != lv_slider_get_value(b->widget)) {
+            lv_slider_set_value(b->widget, v, LV_ANIM_OFF);
+        }
+        if (b->value_label != NULL) {
+            cb_format_value(b, text, sizeof(text));
+            lv_label_set_text(b->value_label, text);
+        }
+    } else if (lv_obj_check_type(b->widget, &lv_bar_class)) {
+        int32_t v = (int32_t)cb_decode_int(b->req.data, b->req.len, cb_dtype_is_signed(b->dp->dtype));
+        lv_bar_set_value(b->widget, v, LV_ANIM_OFF);
+        if (b->value_label != NULL) {
+            cb_format_value(b, text, sizeof(text));
+            lv_label_set_text(b->value_label, text);
         }
     } else if (lv_obj_check_type(b->widget, &lv_textarea_class)) {
         cb_format_value(b, text, sizeof(text));
@@ -346,8 +381,14 @@ cb_switch_event_cb(lv_event_t* e) {
     if (!b->active) {
         return;
     }
-    uint8_t v = lv_obj_has_state((lv_obj_t*)lv_event_get_target(e), LV_STATE_CHECKED) ? 1 : 0;
-    cb_queue_write(b, &v, 1);
+    /* In voller Datentyp-Breite schreiben (Switch auch fuer Integer 0..1) */
+    uint8_t data[8];
+    size_t len = cb_dtype_size(b->dp->dtype);
+    if (len == 0) {
+        len = 1;
+    }
+    cb_encode_int(data, len, lv_obj_has_state((lv_obj_t*)lv_event_get_target(e), LV_STATE_CHECKED) ? 1 : 0);
+    cb_queue_write(b, data, len);
 }
 
 static void
@@ -358,9 +399,44 @@ cb_spinbox_event_cb(lv_event_t* e) {
     }
     int32_t v = lv_spinbox_get_value((lv_obj_t*)lv_event_get_target(e));
     uint8_t data[8];
-    size_t len = cb_dtype_size(b->dp->dtype);
-    cb_encode_int(data, len, v);
+    size_t len;
+    if (b->dp->dtype == CB_DT_F32) {
+        float f = (float)v / CB_F32_SCALE;
+        memcpy(data, &f, 4);
+        len = 4;
+    } else {
+        len = cb_dtype_size(b->dp->dtype);
+        cb_encode_int(data, len, v);
+    }
     cb_queue_write(b, data, len);
+}
+
+/* Slider: Live-Label beim Ziehen, SDO-Download erst beim Loslassen */
+static void
+cb_slider_event_cb(lv_event_t* e) {
+    cb_binding_t* b = (cb_binding_t*)lv_event_get_user_data(e);
+    lv_obj_t* slider = (lv_obj_t*)lv_event_get_target(e);
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (b == NULL || !b->active) {
+        return;
+    }
+    int32_t v = lv_slider_get_value(slider);
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        if (b->value_label != NULL) {
+            lv_label_set_text_fmt(b->value_label, "%d", (int)v);
+        }
+        /* Refresh waehrend des Ziehens zurueckhalten */
+        b->next_read_tick = lv_tick_get() + CB_EDIT_HOLD_MS;
+        return;
+    }
+    if (code == LV_EVENT_RELEASED) {
+        uint8_t data[8];
+        size_t len = cb_dtype_size(b->dp->dtype);
+        cb_encode_int(data, len, v);
+        cb_queue_write(b, data, len);
+    }
 }
 
 static void
@@ -473,13 +549,26 @@ canboss_ui_screen_begin(const canboss_node_desc_t* node) {
     lv_obj_add_flag(cb_keyboard, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_align(cb_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
 
+    canboss_ui_load_screen(scr);
+    return cont;
+}
+
+void
+canboss_ui_load_screen(lv_obj_t* scr) {
     lv_obj_t* old = cb_cur_screen;
     cb_cur_screen = scr;
     lv_screen_load(scr);
     if (old != NULL) {
         lv_obj_delete(old);
     }
-    return cont;
+}
+
+void
+canboss_ui_release_bindings(void) {
+    cb_bindings_release();
+    cb_cur_node = NULL;
+    cb_status_led = NULL;
+    cb_keyboard = NULL;
 }
 
 /* ------------------------------------------------------------------ */
@@ -501,6 +590,34 @@ canboss_ui_add_value_row(lv_obj_t* cont, const canboss_node_desc_t* node, const 
 }
 
 void
+canboss_ui_add_bar_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
+    lv_obj_t* row = cb_row_create(cont, dp);
+    cb_binding_t* b = cb_binding_alloc(node, dp);
+
+    lv_obj_t* box = lv_obj_create(row);
+    lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_style_pad_all(box, 0, 0);
+    lv_obj_set_style_pad_row(box, 4, 0);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* val = lv_label_create(box);
+    lv_label_set_text(val, "--");
+    lv_obj_set_style_text_font(val, &lv_font_montserrat_20, 0);
+
+    lv_obj_t* bar = lv_bar_create(box);
+    lv_obj_set_size(bar, 160, 12);
+    lv_bar_set_range(bar, dp->min, dp->max);
+
+    if (b != NULL) {
+        b->value_label = val;
+        b->widget = bar;
+    }
+}
+
+void
 canboss_ui_add_switch_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
     lv_obj_t* row = cb_row_create(cont, dp);
     cb_binding_t* b = cb_binding_alloc(node, dp);
@@ -509,6 +626,38 @@ canboss_ui_add_switch_row(lv_obj_t* cont, const canboss_node_desc_t* node, const
     if (b != NULL) {
         b->widget = sw;
         lv_obj_add_event_cb(sw, cb_switch_event_cb, LV_EVENT_VALUE_CHANGED, b);
+    }
+}
+
+void
+canboss_ui_add_slider_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
+    lv_obj_t* row = cb_row_create(cont, dp);
+    cb_binding_t* b = cb_binding_alloc(node, dp);
+
+    lv_obj_t* box = lv_obj_create(row);
+    lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_style_pad_all(box, 0, 0);
+    lv_obj_set_style_pad_row(box, 6, 0);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* val = lv_label_create(box);
+    lv_label_set_text(val, "--");
+    lv_obj_set_style_text_font(val, &lv_font_montserrat_20, 0);
+
+    lv_obj_t* slider = lv_slider_create(box);
+    /* Breit genug fuer Fingerbedienung, mit Luft fuer den Knopf */
+    lv_obj_set_width(slider, 200);
+    lv_obj_set_style_margin_hor(slider, 10, 0);
+    lv_slider_set_range(slider, dp->min, dp->max);
+
+    if (b != NULL) {
+        b->value_label = val;
+        b->widget = slider;
+        lv_obj_add_event_cb(slider, cb_slider_event_cb, LV_EVENT_VALUE_CHANGED, b);
+        lv_obj_add_event_cb(slider, cb_slider_event_cb, LV_EVENT_RELEASED, b);
     }
 }
 
@@ -530,13 +679,18 @@ canboss_ui_add_spinbox_row(lv_obj_t* cont, const canboss_node_desc_t* node, cons
     lv_obj_set_size(dec, 40, 40);
 
     lv_obj_t* sb = lv_spinbox_create(box);
-    lv_obj_set_width(sb, 110);
+    lv_obj_set_width(sb, dp->dtype == CB_DT_F32 ? 140 : 110);
     if (dp->has_limits) {
         lv_spinbox_set_range(sb, dp->min, dp->max);
     } else {
         lv_spinbox_set_range(sb, INT32_MIN, INT32_MAX);
     }
-    lv_spinbox_set_digit_format(sb, 8, 0);
+    if (dp->dtype == CB_DT_F32) {
+        /* Festkomma x1000: 5 Vorkomma- + 3 Nachkommastellen */
+        lv_spinbox_set_digit_format(sb, 8, 5);
+    } else {
+        lv_spinbox_set_digit_format(sb, 8, 0);
+    }
 
     lv_obj_t* inc = lv_button_create(box);
     lv_obj_set_style_bg_image_src(inc, LV_SYMBOL_PLUS, 0);
@@ -580,6 +734,12 @@ cb_menu_node_clicked(lv_event_t* e) {
     }
 }
 
+static void
+cb_menu_poc_clicked(lv_event_t* e) {
+    (void)e;
+    canboss_poc_screen_create();
+}
+
 void
 canboss_ui_init(void) {
     cb_bindings_release();
@@ -619,10 +779,9 @@ canboss_ui_init(void) {
         lv_obj_add_event_cb(btn, cb_menu_node_clicked, LV_EVENT_CLICKED, (void*)node);
     }
 
-    lv_obj_t* old = cb_cur_screen;
-    cb_cur_screen = scr;
-    lv_screen_load(scr);
-    if (old != NULL) {
-        lv_obj_delete(old);
-    }
+    /* PoC-Hallenlichtsteuerung (JSON-getriebener Screen, Raw-CAN-Bitmasken) */
+    lv_obj_t* poc_btn = lv_list_add_button(list, LV_SYMBOL_HOME, "Hallenlicht (PoC)");
+    lv_obj_add_event_cb(poc_btn, cb_menu_poc_clicked, LV_EVENT_CLICKED, NULL);
+
+    canboss_ui_load_screen(scr);
 }
