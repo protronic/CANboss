@@ -19,7 +19,7 @@
 #include <zephyr/drivers/can.h>
 #include <zephyr/kernel.h>
 
-CAN_MSGQ_DEFINE(cb_can_rx_msgq, 64);
+CAN_MSGQ_DEFINE(cb_can_rx_msgq, 32);
 
 static const struct device* const cb_can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 static int cb_filter_id = -1;

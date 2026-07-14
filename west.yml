@@ -31,3 +31,17 @@ manifest:
       remote: zephyrproject-rtos
       revision: 1ed1ddd881c3784049a92bb9fe37c38c6c74d998   # LVGL 9.3 (Stand Zephyr v4.1.0)
       path: modules/lib/gui/lvgl
+    # fuer das Hardware-Target stm32h573i_dk (Revisionen = Zephyr v4.1.0)
+    - name: cmsis
+      remote: zephyrproject-rtos
+      revision: d1b8b20b6278615b00e136374540eb1c00dcabe7
+      path: modules/hal/cmsis
+    - name: cmsis_6
+      remote: zephyrproject-rtos
+      repo-path: CMSIS_6
+      revision: 783317a3072554acbac86cca2ff24928cbf98d30
+      path: modules/lib/cmsis_6
+    - name: hal_stm32
+      remote: zephyrproject-rtos
+      revision: 55043bcc35fffa3b4a8c75a696d932b5020aad09
+      path: modules/hal/stm32

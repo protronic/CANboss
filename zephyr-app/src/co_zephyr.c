@@ -12,7 +12,7 @@
  *
  * Die blockierenden SDO-Transfers laufen im Aufruferthread (SDO-Worker
  * der LVGL-UI bzw. Shell-Thread bei Berry) und sind ueber CB_MUTEX_SDO
- * serialisiert - dasselbe Muster wie App/canboss_sdo.c am STM32.
+ * serialisiert.
  */
 
 #include "co_zephyr.h"

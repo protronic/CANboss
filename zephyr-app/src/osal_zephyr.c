@@ -13,7 +13,7 @@
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 
-#define CB_THREAD_STACK_SIZE 8192
+#define CB_THREAD_STACK_SIZE 6144
 #define CB_THREAD_PRIO       K_PRIO_PREEMPT(2)
 
 static K_THREAD_STACK_ARRAY_DEFINE(cb_stacks, CB_THREAD_COUNT, CB_THREAD_STACK_SIZE);

@@ -1,11 +1,11 @@
 # CANbossTouch auf Zephyr (west + LVGL + Berry)
 
-Port der CANbossTouch-Oberflaeche auf Zephyr RTOS: dieselbe LVGL-UI
+Die CANbossTouch-Firmware auf Zephyr RTOS: dieselbe LVGL-UI
 (EDS-generierte Screens aus `App/`, PoC-Hallenlicht) und derselbe
-CANopenNode-Stack, gebaut mit `west` — lauffaehig als `native_sim`
-(Simulation am PC, SDL-Fenster) und vorbereitet fuer CAN-faehige
-Zephyr-Boards. Der STM32-Build (Makefile im Repo-Root) bleibt
-unveraendert bestehen.
+CANopenNode-Stack, gebaut mit `west` — als Firmware fuer das
+**STM32H573I-DK** (FT813-Display am SPI2, FDCAN2) und als `native_sim`
+(Simulation am PC, SDL-Fenster). Der fruehere FreeRTOS/STM32-HAL-Build
+liegt in der Git-Historie.
 
 Dazu kommt **Berry-Scripting** (Submodul
 `Middlewares/Third_Party/berry`): eine Skript-VM mit direktem Zugriff
@@ -18,9 +18,12 @@ ueber das Shell-Kommando `berry`.
 zephyr-app/
   CMakeLists.txt        Zephyr-App: App/-Quellen + CANopenNode + Berry
   prj.conf, Kconfig     Konfiguration (CONFIG_CANBOSSTOUCH_*)
+  boards/stm32h573i_dk.* FT813 an SPI2, FDCAN2 (PB5/PB6), RAM-Tuning
   boards/native_sim.*   SDL-Display 800x480, Shell auf stdin/stdout
   overlays/headless.*   Dummy-Display (CI/Container ohne SDL2)
   overlays/vcan.overlay CAN auf Host-SocketCAN statt Loopback
+  drivers/ft813.c       FT813-Displaytreiber + Touch-Input (DT-Binding
+                        dts/bindings/display/protronic,ft813.yaml)
   port/                 CANopenNode-Port (CO_driver auf can_if/osal)
   berry/berry_conf.h    Berry-Konfiguration (ohne Dateisystem/OS-Modul)
   src/
@@ -72,6 +75,26 @@ west build ... -- -DEXTRA_DTC_OVERLAY_FILE=overlays/vcan.overlay
 
 Auf Hardware-Targets zeigt `chosen zephyr,canbus` im Board-Overlay auf
 den CAN-Controller, `zephyr,display` auf das Panel.
+
+## Bauen und flashen (STM32H573I-DK)
+
+```bash
+# mit dem Zephyr-SDK (empfohlen):
+west build -b stm32h573i_dk CANbossTouch/zephyr-app
+west flash
+
+# alternativ mit Ubuntu-Paketen (gcc-arm-none-eabi + picolibc-arm-none-eabi):
+ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb GNUARMEMB_TOOLCHAIN_PATH=/usr \
+  west build -b stm32h573i_dk CANbossTouch/zephyr-app -- -DTOOLCHAIN_HAS_PICOLIBC=ON
+```
+
+Das Board-Overlay (`boards/stm32h573i_dk.overlay`) bindet das
+gen4-FT813-Modul am Arduino-Header an (SPI2 PI1/PI2/PB15, /CS PA3,
+PD PA8 — Verdrahtung siehe README im Repo-Root) und CANopen an FDCAN2
+(PB5/PB6, 500 kbit/s). Die Speicheraufteilung (LVGL-Puffer, Heaps,
+Stacks) ist in `boards/stm32h573i_dk.conf` auf die 256-KiB-SRAM1-Bank
+des H573 abgestimmt (~99 % belegt); Reserven liegen in SRAM2/SRAM3
+(z.B. LVGL-Puffer per `CONFIG_LV_Z_VDB_CUSTOM_SECTION` auslagern).
 
 ## Berry-Scripting (OD-/PDO-Zugriff)
 
@@ -126,8 +149,9 @@ erzeugt (Konfiguration: `zephyr-app/berry/berry_conf.h`).
 
 ## Offene Punkte
 
-- Hardware-Target (STM32H5/U5 mit Zephyr) aufsetzen: Board-Overlay
-  fuer FDCAN + Display/Touch, Speicher-Tuning
+- Hardware-Bring-up am realen STM32H573I-DK (der Board-Build ist
+  kompiliert/gelinkt, aber noch nicht auf dem Geraet gelaufen);
+  RAM-Feintuning, ggf. LVGL-Puffer nach SRAM2/3
 - Berry-Autostart-Skript (z.B. aus Settings/Flash) und LVGL-Konsole
   fuer Berry direkt am Panel
 - PoC-Hallenlicht: minp-Feedback ueber vcan gegen die Demo-Umgebung

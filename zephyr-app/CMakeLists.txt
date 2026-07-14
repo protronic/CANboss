@@ -50,6 +50,10 @@ target_sources(app PRIVATE
     ${CANOPEN_DIR}/301/crc16-ccitt.c
 )
 
+# FT813-Displaytreiber (Hardware-Targets mit SPI; DT-Binding unter
+# dts/bindings/display/protronic,ft813.yaml)
+target_sources_ifdef(CONFIG_SPI app PRIVATE drivers/ft813.c)
+
 target_include_directories(app PRIVATE
     src
     port

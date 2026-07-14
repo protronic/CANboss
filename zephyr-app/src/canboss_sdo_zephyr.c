@@ -4,8 +4,7 @@
  * Zephyr-Implementierung der asynchronen SDO-Client-Schicht
  * (App/canboss_sdo.h): die LVGL-UI stellt Auftraege in eine k_msgq,
  * ein Worker-Thread arbeitet sie sequenziell ueber die blockierenden
- * SDO-Transfers aus co_zephyr.c ab. Gegenstueck zu App/canboss_sdo.c
- * (FreeRTOS/STM32); die UI pollt wie dort nur das Statusfeld.
+ * SDO-Transfers aus co_zephyr.c ab; die UI pollt nur das Statusfeld.
  */
 
 #include "canboss_sdo.h"

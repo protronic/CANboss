@@ -3,12 +3,14 @@
  *
  * Asynchrone SDO-Client-Schicht auf Basis von CANopenNode (CO_SDOclient).
  *
- * Die LVGL-Oberflaeche stellt Lese-/Schreibauftraege in eine FreeRTOS-Queue.
- * Ein Worker-Task arbeitet die Auftraege sequenziell ueber den SDO-Client
+ * Die LVGL-Oberflaeche stellt Lese-/Schreibauftraege in eine Queue.
+ * Ein Worker-Thread arbeitet die Auftraege sequenziell ueber den SDO-Client
  * (OD-Eintrag 0x1280) ab: Expedited- und Segmented-Transfers zu beliebigen
  * Knoten des Netzwerks. Ergebnisse werden per Callback-freiem Polling
  * (Statusfeld im Auftrag) an die UI zurueckgemeldet, damit alle
  * LVGL-Aufrufe im LVGL-Task bleiben.
+ *
+ * Implementierung: zephyr-app/src/canboss_sdo_zephyr.c (k_msgq/k_thread).
  */
 
 #ifndef CANBOSS_SDO_H_

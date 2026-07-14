@@ -2,7 +2,7 @@
  * co_zephyr.h
  *
  * CANopenNode-Stack der CANbossTouch-Zephyr-App (Node 127, OD aus
- * App/OD) - Pendant zu CO_app_STM32 des STM32-Builds.
+ * App/OD).
  *
  * Bietet zusaetzlich blockierende SDO-Client-Transfers, die sich der
  * canboss_sdo-Worker (LVGL-UI) und die Berry-Bindings teilen
