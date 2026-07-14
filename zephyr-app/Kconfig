@@ -1,0 +1,23 @@
+# Applikationsoptionen der CANbossTouch-Zephyr-App
+
+mainmenu "CANbossTouch - CANopen-Touchpanel"
+
+config CANBOSSTOUCH_NODE_ID
+	int "Eigene CANopen-Node-ID des Panels"
+	range 1 127
+	default 127
+	help
+	  Node-ID, mit der das Panel selbst am Bus haengt
+	  (canboss_master.eds -> App/OD, Node 127).
+
+config CANBOSSTOUCH_BERRY
+	bool "Berry-Scripting (od-Modul + Shell-Kommando)"
+	default y
+	help
+	  Bindet die Berry-VM (Middlewares/Third_Party/berry) ein und
+	  registriert das Shell-Kommando "berry". Skripte erreichen das
+	  Objektverzeichnis ueber od.read/od.write (SDO zu entfernten
+	  Knoten) und od.local/od.local_write (eigenes OD, inkl. der
+	  per RPDO empfangenen PDO-Werte).
+
+source "Kconfig.zephyr"

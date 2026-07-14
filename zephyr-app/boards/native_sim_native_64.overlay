@@ -1,0 +1,22 @@
+/*
+ * native_sim: 800x480-Panel (wie der STM32-Zielaufbau) und
+ * LVGL-Pointer auf dem SDL-Touch/Maus-Eingang.
+ *
+ * CAN: chosen zephyr,canbus bleibt auf can_loopback0 (Default) -
+ * damit antwortet der eigene SDO-Server des Panels auf SDO-Anfragen
+ * des Panels (Loopback-Demo, auch fuer Berry-Skripte). Fuer echtes
+ * Host-SocketCAN das vcan-Overlay dazunehmen:
+ *   -DEXTRA_DTC_OVERLAY_FILE=overlays/vcan.overlay
+ */
+
+/ {
+	lvgl_pointer {
+		compatible = "zephyr,lvgl-pointer-input";
+		input = <&input_sdl_touch>;
+	};
+};
+
+&sdl_dc {
+	height = <480>;
+	width = <800>;
+};

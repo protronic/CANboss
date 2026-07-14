@@ -1,0 +1,17 @@
+/*
+ * CAN ueber das Host-SocketCAN-Interface statt des Loopbacks
+ * (zephyr,native-linux-can). Host-Interface anlegen:
+ *   sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
+ * Zur Laufzeit umlenkbar: ./zephyr.exe -can-if=<name>
+ */
+
+/ {
+	chosen {
+		zephyr,canbus = &can0;
+	};
+};
+
+&can0 {
+	status = "okay";
+	host-interface = "vcan0";
+};

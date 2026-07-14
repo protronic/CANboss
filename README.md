@@ -22,6 +22,12 @@ Rust/embassy/oxivgl (EDS-Screens, eigener SDO-Client, PoC-Hallenlicht)
 liegt im embassy-Repo unter `examples/gen4-ft813-70ctp-h573i-dk`
 (Binary `canboss_touch`).
 
+**Zephyr-Port**: Die App läuft zusätzlich als Zephyr-Applikation
+(`west build -b native_sim/native/64 CANbossTouch/zephyr-app`) mit
+derselben LVGL-UI und CANopenNode — inklusive **Berry-Scripting** mit
+Skript-Zugriff auf Objektverzeichnis und PDO-Werte über das
+Shell-Kommando `berry`. Siehe [zephyr-app/README.md](zephyr-app/README.md).
+
 ## Hardware-Verdrahtung (Arduino-Header des STM32H573I-DK)
 
 | Signal (gen4-PA/gen4-IB) | Arduino | MCU-Pin | Funktion |
