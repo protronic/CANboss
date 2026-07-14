@@ -83,13 +83,20 @@ Ergebnisse und bleibt dadurch komplett im LVGL-Task.
 ```json
 {
   "nodes": [
-    { "node_id": 16, "name": "IO-Modul", "eds": "demo_io.eds" },
-    { "node_id": 32, "name": "Antrieb",  "eds": "demo_drive.eds" },
-    { "node_id": 48, "name": "DS301 Geraet", "eds": "DS301_profile.eds",
-      "include": ["0x1000-0x1001", "0x1008-0x100A", "0x1017"] }
+    { "node_id": 16, "name": "IO-Modul",    "eds": "demo_io.eds" },
+    { "node_id": 32, "name": "Antrieb",     "eds": "demo_drive.eds" },
+    { "node_id": 48, "name": "Klimasensor", "eds": "demo_sensor.eds" }
   ]
 }
 ```
+
+Die drei Knoten sind das **Demo-Netzwerk** aus dem CANopenEditor-Repo
+(`CANopenEditor/demo/`): IO-Modul (digitale/analoge Ein-/Ausgänge,
+BOOL-Datenpunkte in RPDO/TPDO und per SDO), Antrieb (CiA402-Teilmenge)
+und Klimasensor (Temperatur/Feuchte/Druck/Alarm). Die EDS-Dateien hier
+sind Kopien von dort; die zugehörigen CANopenNode-ODs der Geräteknoten
+liegen generiert unter `CANopenEditor/demo/generated/`, damit die Knoten
+auf echter Hardware laufen können.
 
 - `node_id` – CANopen-Node-ID (1…127)
 - `eds` – EDS-Datei (CiA 306) im Verzeichnis `eds/`
@@ -139,8 +146,35 @@ Submodule: `Middlewares/Third_Party/LVGL/lvgl` (LVGL 9.5) und
   (`canopen_app_interrupt()`)
 - Eigene Node-ID des Panels: `CANBOSS_NODE_ID` (Default **127**,
   in `Core/Inc/main.h`)
-- Das Panel ist selbst ein vollwertiger CANopen-Knoten
-  (DS301-OD in `App/OD/`, NMT/Heartbeat/SDO-Server/LSS-Slave)
+- Das Panel ist selbst ein vollwertiger CANopen-Knoten und **Quasi-Master**
+  des Demo-Netzwerks: `App/OD/OD.c/.h` ist aus `eds/canboss_master.eds`
+  generiert (CANopenNode v4, NMT/Heartbeat/SDO-Server/SDO-Client/LSS-Slave)
+
+## Master-OD (App/OD)
+
+Das Objektverzeichnis des Panels stammt aus `eds/canboss_master.eds`
+(Demo-Netzwerk, siehe `CANopenEditor/demo/README.md`) und macht das Panel
+zum Monitor des gesamten Netzwerks – zusätzlich zum SDO-Polling der
+EDS-Screens:
+
+- **7 RPDOs** hören auf die TPDOs der Demo-Knoten und spiegeln alle
+  Prozessdaten in eigene OD-Objekte: 0x2110/0x2111/0x2112 (IO: analoge
+  Eingänge, Temperatur, digitale Eingänge als BOOL), 0x2120/0x2121
+  (Antrieb: Status, Drehzahlen, Motorstrom, Endstufentemperatur),
+  0x2130–0x2132 (Sensor: Klima, Umgebung, Alarm)
+- **2 TPDOs** senden Kommandos auf die RPDOs der Knoten: 0x2210
+  (IO: Ausgänge 1–4 als BOOL + Sollwert) und 0x2220 (Antrieb:
+  Controlword, Drehzahl-Sollwert, Bremse)
+- **Heartbeat-Consumer** (0x1016) überwacht die Knoten 16/32/48
+  (Timeout 3000 ms), eigener Heartbeat 1000 ms
+- **SDO-Client** (0x1280) für die Parametrierung aus der Touch-Oberfläche
+
+Neu generieren (EDSSharp-CLI aus dem CANopenEditor-Repo):
+
+```sh
+dotnet EDSSharp.dll --export-project --infile eds/canboss_master.eds \
+    --outdir App/OD --od OD --json /tmp/CANboss-Master.json
+```
 
 ## Display (FT813 / EVE2 über SPI)
 
