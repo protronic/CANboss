@@ -1,0 +1,26 @@
+# Applikationsoptionen des CANboss-Monitors (Zephyr-Build)
+
+mainmenu "CANboss - CANopen-Parametermonitor"
+
+config CANBOSS_NODE_ID
+	int "Eigene CANopen-Node-ID des Monitors"
+	range 1 127
+	default 127
+	help
+	  Node-ID, mit der der Monitor selbst am Bus haengt
+	  (canboss_master.eds: Node 127).
+
+config CANBOSS_TUI_ROWS
+	int "Zeilen der Terminal-UI"
+	range 12 200
+	default 30
+	help
+	  Die UART-Konsole kann die Terminalgroesse nicht abfragen;
+	  die UI zeichnet fest mit dieser Zeilenzahl.
+
+config CANBOSS_TUI_COLS
+	int "Spalten der Terminal-UI"
+	range 60 400
+	default 120
+
+source "Kconfig.zephyr"

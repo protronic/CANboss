@@ -13,11 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <time.h>
 
 #include "canboss.h"
 #include "canboss_net.h"
 #include "co_node.h"
+#include "osal.h"
 #include "sdo_value.h"
 #include "tui.h"
 
@@ -63,9 +63,7 @@ typedef struct {
 
 static uint64_t
 now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000ull + (uint64_t)ts.tv_nsec / 1000000ull;
+    return cb_now_us() / 1000ull;
 }
 
 static void

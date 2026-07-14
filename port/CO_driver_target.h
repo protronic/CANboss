@@ -1,17 +1,18 @@
 /**
  * CO_driver_target.h
  *
- * CANopenNode-Zielkonfiguration fuer den CANboss-Monitor (Linux,
- * pthreads). Der eigentliche Buszugriff laeuft ueber die austauschbare
- * Backend-Schnittstelle src/can_if.h (SocketCAN heute, seriell spaeter).
+ * CANopenNode-Zielkonfiguration fuer den CANboss-Monitor (Linux/POSIX
+ * und Zephyr). Der eigentliche Buszugriff laeuft ueber die
+ * austauschbare Backend-Schnittstelle src/can_if.h (SocketCAN bzw.
+ * Zephyr-CAN heute, seriell spaeter).
  *
- * Threads:
+ * Threads (src/osal.h: pthreads bzw. k_thread):
  *   - RX-Thread:       cb_can_recv() -> CO_CANrxDispatch()
  *   - Mainline-Thread: CO_process() + SYNC/RPDO/TPDO
- *   - UI-Thread:       SDO-Client-Transfers (seriell, mutex-geschuetzt)
+ *   - UI/Main-Thread:  SDO-Client-Transfers (seriell, mutex-geschuetzt)
  *
- * Die CO_LOCK_*-Makros sind deshalb mit echten pthread-Mutexen belegt
- * (Definition in port/CO_driver.c).
+ * Die CO_LOCK_*-Makros sind deshalb mit echten Mutexen belegt
+ * (Definition in port/CO_driver.c auf Basis der OS-Abstraktion).
  */
 
 #ifndef CO_DRIVER_TARGET_H
@@ -20,7 +21,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <pthread.h>
 
 #ifdef CO_DRIVER_CUSTOM
 #include "CO_driver_custom.h"
@@ -112,19 +112,22 @@ typedef struct {
     uint8_t attr;
 } CO_storage_entry_t;
 
-/* Kritische Abschnitte: pthread-Mutexe aus port/CO_driver.c */
-extern pthread_mutex_t CO_driver_mutex_send;
-extern pthread_mutex_t CO_driver_mutex_emcy;
-extern pthread_mutex_t CO_driver_mutex_od;
+/* Kritische Abschnitte: Mutexe der OS-Abstraktion (port/CO_driver.c) */
+void CO_driver_lock_send(void);
+void CO_driver_unlock_send(void);
+void CO_driver_lock_emcy(void);
+void CO_driver_unlock_emcy(void);
+void CO_driver_lock_od(void);
+void CO_driver_unlock_od(void);
 
-#define CO_LOCK_CAN_SEND(CAN_MODULE)   pthread_mutex_lock(&CO_driver_mutex_send)
-#define CO_UNLOCK_CAN_SEND(CAN_MODULE) pthread_mutex_unlock(&CO_driver_mutex_send)
+#define CO_LOCK_CAN_SEND(CAN_MODULE)   CO_driver_lock_send()
+#define CO_UNLOCK_CAN_SEND(CAN_MODULE) CO_driver_unlock_send()
 
-#define CO_LOCK_EMCY(CAN_MODULE)   pthread_mutex_lock(&CO_driver_mutex_emcy)
-#define CO_UNLOCK_EMCY(CAN_MODULE) pthread_mutex_unlock(&CO_driver_mutex_emcy)
+#define CO_LOCK_EMCY(CAN_MODULE)   CO_driver_lock_emcy()
+#define CO_UNLOCK_EMCY(CAN_MODULE) CO_driver_unlock_emcy()
 
-#define CO_LOCK_OD(CAN_MODULE)   pthread_mutex_lock(&CO_driver_mutex_od)
-#define CO_UNLOCK_OD(CAN_MODULE) pthread_mutex_unlock(&CO_driver_mutex_od)
+#define CO_LOCK_OD(CAN_MODULE)   CO_driver_lock_od()
+#define CO_UNLOCK_OD(CAN_MODULE) CO_driver_unlock_od()
 
 /* Synchronisation zwischen RX-Thread und Verarbeitungsthreads */
 #define CO_MemoryBarrier() __sync_synchronize()

@@ -14,13 +14,11 @@
  */
 
 #include "co_node.h"
+#include "osal.h"
 
 #include <errno.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 
 #include "CANopen.h"
 #include "301/CO_SDOclient.h"
@@ -34,20 +32,10 @@
 static CO_t* cb_co = NULL;
 static const cb_can_backend_t* cb_backend = NULL;
 static volatile bool cb_running = false;
-static pthread_t cb_rx_thread;
-static pthread_t cb_mainline_thread;
-static pthread_mutex_t cb_sdo_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char cb_error_text[256];
 
-static uint64_t
-monotonic_us(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000ull + (uint64_t)ts.tv_nsec / 1000ull;
-}
-
 /* RX-Thread: Frames vom Backend an den Stack verteilen */
-static void*
+static void
 cb_rx_loop(void* arg) {
     (void)arg;
     cb_can_frame_t frame;
@@ -57,7 +45,7 @@ cb_rx_loop(void* arg) {
         int ret = cb_backend->recv(&frame, CB_CO_RX_TIMEOUT_MS);
         if (ret < 0) {
             /* Backend weg (Interface down o.ae.): kurz warten */
-            usleep(10000);
+            cb_sleep_us(10000);
             continue;
         }
         if (ret == 0 || frame.rtr) {
@@ -68,18 +56,17 @@ cb_rx_loop(void* arg) {
         memcpy(msg.data, frame.data, sizeof(msg.data));
         CO_CANrxDispatch(cb_co->CANmodule, &msg);
     }
-    return NULL;
 }
 
 /* Mainline-Thread: zyklische Stack-Verarbeitung */
-static void*
+static void
 cb_mainline_loop(void* arg) {
     (void)arg;
-    uint64_t last = monotonic_us();
+    uint64_t last = cb_now_us();
 
     while (cb_running) {
-        usleep(CB_CO_MAINLINE_INTERVAL_US);
-        uint64_t now = monotonic_us();
+        cb_sleep_us(CB_CO_MAINLINE_INTERVAL_US);
+        uint64_t now = cb_now_us();
         uint32_t diff_us = (uint32_t)(now - last);
         last = now;
 
@@ -102,7 +89,6 @@ cb_mainline_loop(void* arg) {
         }
         CO_UNLOCK_OD(cb_co->CANmodule);
     }
-    return NULL;
 }
 
 static int
@@ -177,13 +163,13 @@ cb_co_start(const cb_can_backend_t* backend, const char* device, uint32_t bitrat
     CO_CANsetNormalMode(cb_co->CANmodule);
 
     cb_running = true;
-    if (pthread_create(&cb_rx_thread, NULL, cb_rx_loop, NULL) != 0
-        || pthread_create(&cb_mainline_thread, NULL, cb_mainline_loop, NULL) != 0) {
+    if (cb_thread_start(CB_THREAD_CAN_RX, cb_rx_loop, NULL) != 0
+        || cb_thread_start(CB_THREAD_MAINLINE, cb_mainline_loop, NULL) != 0) {
         cb_running = false;
         CO_delete(cb_co);
         cb_co = NULL;
         backend->close();
-        snprintf(cb_error_text, sizeof(cb_error_text), "Threads starten fehlgeschlagen: %s", strerror(errno));
+        snprintf(cb_error_text, sizeof(cb_error_text), "Threads starten fehlgeschlagen");
         return -1;
     }
 
@@ -196,8 +182,8 @@ cb_co_stop(void) {
         return;
     }
     cb_running = false;
-    pthread_join(cb_rx_thread, NULL);
-    pthread_join(cb_mainline_thread, NULL);
+    cb_thread_join(CB_THREAD_CAN_RX);
+    cb_thread_join(CB_THREAD_MAINLINE);
     CO_CANmodule_disable(cb_co->CANmodule);
     CO_delete(cb_co);
     cb_co = NULL;
@@ -242,7 +228,7 @@ cb_read_SDO(CO_SDOclient_t* SDO_C, uint8_t nodeId, uint16_t index, uint8_t subIn
         if (SDO_ret < 0) {
             return abortCode;
         }
-        usleep(1000);
+        cb_sleep_us(1000);
     } while (SDO_ret > 0);
 
     *readSize = CO_SDOclientUploadBufRead(SDO_C, buf, bufSize);
@@ -279,7 +265,7 @@ cb_write_SDO(CO_SDOclient_t* SDO_C, uint8_t nodeId, uint16_t index, uint8_t subI
         if (SDO_ret < 0) {
             return abortCode;
         }
-        usleep(1000);
+        cb_sleep_us(1000);
     } while (SDO_ret > 0);
 
     return CO_SDO_AB_NONE;
@@ -293,10 +279,10 @@ cb_co_sdo_read(uint8_t node_id, uint16_t index, uint8_t sub, uint8_t* buf, size_
         return -1;
     }
 
-    pthread_mutex_lock(&cb_sdo_mutex);
+    cb_mutex_lock(CB_MUTEX_SDO);
     CO_SDO_abortCode_t abort = cb_read_SDO(&cb_co->SDOclient[0], node_id, index, sub, buf, buf_size, read_size);
     CO_SDOclientClose(&cb_co->SDOclient[0]);
-    pthread_mutex_unlock(&cb_sdo_mutex);
+    cb_mutex_unlock(CB_MUTEX_SDO);
 
     if (abort != CO_SDO_AB_NONE) {
         *abort_code = (uint32_t)abort;
@@ -312,10 +298,10 @@ cb_co_sdo_write(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t* dat
         return -1;
     }
 
-    pthread_mutex_lock(&cb_sdo_mutex);
+    cb_mutex_lock(CB_MUTEX_SDO);
     CO_SDO_abortCode_t abort = cb_write_SDO(&cb_co->SDOclient[0], node_id, index, sub, data, len);
     CO_SDOclientClose(&cb_co->SDOclient[0]);
-    pthread_mutex_unlock(&cb_sdo_mutex);
+    cb_mutex_unlock(CB_MUTEX_SDO);
 
     if (abort != CO_SDO_AB_NONE) {
         *abort_code = (uint32_t)abort;

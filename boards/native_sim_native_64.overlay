@@ -1,0 +1,20 @@
+/*
+ * native_sim: CAN ueber das Host-SocketCAN-Interface anbinden
+ * (Treiber "zephyr,native-linux-can" statt des Default-Loopbacks).
+ *
+ * Host-Interface anlegen:
+ *   sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
+ * Alternativ echtes can0 unter dem Altnamen vcan0 verfuegbar machen:
+ *   sudo ip link property add dev can0 altname vcan0
+ */
+
+/ {
+	chosen {
+		zephyr,canbus = &can0;
+	};
+};
+
+&can0 {
+	status = "okay";
+	host-interface = "vcan0";
+};

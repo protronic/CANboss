@@ -1,0 +1,26 @@
+# West-Manifest: CANboss als Zephyr-Applikation (T2-Topologie,
+# CANboss ist das Manifest-Repository).
+#
+# Einrichtung:
+#   mkdir canboss-workspace && cd canboss-workspace
+#   west init -m https://github.com/protronic/CANboss
+#   west update
+#   git -C CANboss submodule update --init   # CANopenNode
+#
+# native_sim braucht keine HAL-Module, daher wird nur zephyr selbst
+# geholt (ohne import).
+
+manifest:
+  self:
+    path: CANboss
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.1.0
+      path: zephyr
+      west-commands: scripts/west-commands.yml

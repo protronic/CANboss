@@ -38,8 +38,10 @@ APP_SRCS := \
 	src/can_socketcan.c \
 	src/can_serial.c \
 	src/co_node.c \
+	src/osal_posix.c \
 	src/sdo_value.c \
 	src/tui.c \
+	src/tui_io_posix.c \
 	src/ui.c \
 	src/main.c \
 	$(wildcard src/gen/canboss_net_*.c)

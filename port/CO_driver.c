@@ -11,12 +11,39 @@
 #include "301/CO_driver.h"
 
 #include "can_if.h"
+#include "osal.h"
 
 #include <string.h>
 
-pthread_mutex_t CO_driver_mutex_send = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t CO_driver_mutex_emcy = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t CO_driver_mutex_od = PTHREAD_MUTEX_INITIALIZER;
+void
+CO_driver_lock_send(void) {
+    cb_mutex_lock(CB_MUTEX_CAN_SEND);
+}
+
+void
+CO_driver_unlock_send(void) {
+    cb_mutex_unlock(CB_MUTEX_CAN_SEND);
+}
+
+void
+CO_driver_lock_emcy(void) {
+    cb_mutex_lock(CB_MUTEX_EMCY);
+}
+
+void
+CO_driver_unlock_emcy(void) {
+    cb_mutex_unlock(CB_MUTEX_EMCY);
+}
+
+void
+CO_driver_lock_od(void) {
+    cb_mutex_lock(CB_MUTEX_OD);
+}
+
+void
+CO_driver_unlock_od(void) {
+    cb_mutex_unlock(CB_MUTEX_OD);
+}
 
 void
 CO_CANsetConfigurationMode(void* CANptr) {

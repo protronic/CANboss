@@ -1,30 +1,38 @@
 /**
  * tui.c
  *
- * Terminal-Schicht: termios-Raw-Mode + ANSI-Escape-Ausgabe.
+ * Terminal-Schicht: Frame-Puffer + ANSI-Escape-Ausgabe + Tastatur-
+ * Parsing. Plattformspezifisches I/O (Raw-Mode, Byte lesen/schreiben,
+ * Fenstergroesse) liegt hinter tui_io.h - implementiert fuer POSIX
+ * (tui_io_posix.c) und Zephyr (tui_io_zephyr.c).
+ *
  * Der Frame wird in einem Zellenpuffer aufgebaut und mit einem einzigen
- * write() ausgegeben; Attributwechsel werden dabei minimiert.
+ * write ausgegeben; Attributwechsel werden dabei minimiert.
  */
 
 #include "tui.h"
+#include "tui_io.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <sys/select.h>
-#include <termios.h>
-#include <unistd.h>
 
+/* Puffergroesse: im Zephyr-Build auf die konfigurierte UI-Groesse
+ * begrenzt (statische Puffer!), am Host grosszuegig fuer jedes
+ * Terminalfenster. */
+#ifdef CONFIG_CANBOSS_TUI_ROWS
+#define TUI_MAX_ROWS CONFIG_CANBOSS_TUI_ROWS
+#define TUI_MAX_COLS CONFIG_CANBOSS_TUI_COLS
+#else
 #define TUI_MAX_ROWS 200
 #define TUI_MAX_COLS 400
+#endif
 
 typedef struct {
     char ch;
     uint8_t style;
 } tui_cell_t;
 
-static struct termios tui_saved_termios;
 static bool tui_active = false;
 static int tui_cur_rows = 24;
 static int tui_cur_cols = 80;
@@ -32,32 +40,20 @@ static tui_cell_t tui_buf[TUI_MAX_ROWS][TUI_MAX_COLS];
 
 static void
 tui_update_size(void) {
-    struct winsize ws;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0 && ws.ws_col > 0) {
-        tui_cur_rows = ws.ws_row < TUI_MAX_ROWS ? ws.ws_row : TUI_MAX_ROWS;
-        tui_cur_cols = ws.ws_col < TUI_MAX_COLS ? ws.ws_col : TUI_MAX_COLS;
-    }
+    int rows = tui_cur_rows;
+    int cols = tui_cur_cols;
+    tui_io_get_size(&rows, &cols);
+    tui_cur_rows = rows > 0 ? (rows < TUI_MAX_ROWS ? rows : TUI_MAX_ROWS) : tui_cur_rows;
+    tui_cur_cols = cols > 0 ? (cols < TUI_MAX_COLS ? cols : TUI_MAX_COLS) : tui_cur_cols;
 }
 
 int
 tui_init(void) {
-    struct termios raw;
-
-    if (tcgetattr(STDIN_FILENO, &tui_saved_termios) != 0) {
+    if (tui_io_init() != 0) {
         return -1;
     }
-    raw = tui_saved_termios;
-    raw.c_lflag &= ~(tcflag_t)(ECHO | ICANON | ISIG | IEXTEN);
-    raw.c_iflag &= ~(tcflag_t)(IXON | ICRNL | BRKINT | INPCK | ISTRIP);
-    raw.c_oflag &= ~(tcflag_t)OPOST;
-    raw.c_cc[VMIN] = 0;
-    raw.c_cc[VTIME] = 0;
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0) {
-        return -1;
-    }
-
     /* Alternate Screen an, Cursor aus */
-    (void)!write(STDOUT_FILENO, "\x1b[?1049h\x1b[?25l", 14);
+    tui_io_write("\x1b[?1049h\x1b[?25l", 14);
     tui_active = true;
     tui_update_size();
     return 0;
@@ -68,8 +64,8 @@ tui_deinit(void) {
     if (!tui_active) {
         return;
     }
-    (void)!write(STDOUT_FILENO, "\x1b[?25h\x1b[?1049l", 14);
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &tui_saved_termios);
+    tui_io_write("\x1b[?25h\x1b[?1049l", 14);
+    tui_io_deinit();
     tui_active = false;
 }
 
@@ -137,7 +133,7 @@ tui_frame_flush(void) {
         }
     }
     n += (size_t)sprintf(out + n, "\x1b[0m");
-    (void)!write(STDOUT_FILENO, out, n);
+    tui_io_write(out, n);
 }
 
 void
@@ -222,20 +218,9 @@ tui_box(int row, int col, int height, int width, uint8_t style, const char* titl
 cb_key_t
 tui_poll_key(int timeout_ms) {
     cb_key_t key = {CB_KEY_NONE, 0};
-    fd_set rfds;
-    struct timeval tv;
 
-    FD_ZERO(&rfds);
-    FD_SET(STDIN_FILENO, &rfds);
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-
-    if (select(STDIN_FILENO + 1, &rfds, NULL, NULL, &tv) <= 0) {
-        return key;
-    }
-
-    unsigned char c;
-    if (read(STDIN_FILENO, &c, 1) != 1) {
+    int c = tui_io_getc(timeout_ms);
+    if (c < 0) {
         return key;
     }
 
@@ -264,32 +249,22 @@ tui_poll_key(int timeout_ms) {
             return key;
     }
 
-    /* ESC: entweder allein oder Beginn einer CSI-Sequenz */
-    unsigned char seq[2];
-    fd_set efds;
-    struct timeval etv = {0, 20000}; /* 20 ms auf Folgebytes warten */
-    FD_ZERO(&efds);
-    FD_SET(STDIN_FILENO, &efds);
-    if (select(STDIN_FILENO + 1, &efds, NULL, NULL, &etv) <= 0) {
+    /* ESC: entweder allein oder Beginn einer CSI-Sequenz
+     * (20 ms auf Folgebytes warten) */
+    int b1 = tui_io_getc(20);
+    if (b1 != '[') {
         key.kind = CB_KEY_ESC;
         return key;
     }
-    if (read(STDIN_FILENO, &seq[0], 1) != 1 || seq[0] != '[') {
-        key.kind = CB_KEY_ESC;
-        return key;
-    }
-    if (read(STDIN_FILENO, &seq[1], 1) != 1) {
-        key.kind = CB_KEY_ESC;
-        return key;
-    }
+    int b2 = tui_io_getc(20);
 
-    switch (seq[1]) {
+    switch (b2) {
         case 'A': key.kind = CB_KEY_UP; break;
         case 'B': key.kind = CB_KEY_DOWN; break;
         case 'C': key.kind = CB_KEY_RIGHT; break;
         case 'D': key.kind = CB_KEY_LEFT; break;
         case 'Z': key.kind = CB_KEY_TAB; break; /* Shift-Tab wie Tab */
-        default: break;
+        default: key.kind = CB_KEY_ESC; break;
     }
     return key;
 }
