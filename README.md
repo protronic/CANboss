@@ -62,6 +62,19 @@ git -C CANboss submodule update --init          # CANopenNode
 ZEPHYR_TOOLCHAIN_VARIANT=host west build -b native_sim/native/64 CANboss
 ```
 
+Bereits geklont? Dann den Workspace um den vorhandenen Klon herum
+anlegen (`west build` gibt es erst innerhalb eines Workspace):
+
+```bash
+cd ..                     # ins Verzeichnis UEBER dem Klon
+west init -l CANboss      # Klon als Manifest-Repo registrieren
+west update               # holt zephyr daneben
+```
+
+Liegt daneben auch ein CANbossTouch-Klon, stattdessen
+`west init -l CANbossTouch` verwenden — dessen Manifest umfasst alle
+Module fuer beide Apps.
+
 Starten (UART-Konsole liegt auf stdin/stdout, die TUI laeuft direkt im
 Terminal; Groesse ueber `CONFIG_CANBOSS_TUI_{ROWS,COLS}`):
 
