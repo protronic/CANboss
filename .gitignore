@@ -3,3 +3,6 @@ build*/
 build-*/
 build/
 canboss
+__pycache__/
+*.pyc
+*.egg-info/

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canboss-monitor"
+version = "0.1.0"
+description = "CANboss Monitor - komfortable CANopen-Parameter-TUI (Textual + python-can/canopen)"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=1.0",
+    "python-can>=4.0",
+    "canopen>=2.3",
+]
+
+[project.scripts]
+canboss-monitor = "canboss_monitor.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["canboss_monitor*"]
