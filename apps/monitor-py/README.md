@@ -60,8 +60,14 @@ sudo ip link set vcan0 up
 ./build-sensor/zephyr/zephyr.exe    # Node 48  Klimasensor
 
 # Terminal 4: der Monitor (socketcan + vcan0 sind die Defaults)
-canboss-monitor --interface socketcan --channel vcan0
+canboss-monitor --interface socketcan --channel vcan0 --eds-dir CANboss/eds
 ```
+
+`--eds-dir` zeigt auf das Verzeichnis mit `network.json` + EDS-Dateien —
+dieselbe Quelle, aus der auch Touch-Panel und C-Monitor generiert werden.
+Bei einer editierbaren Installation aus dem Repo (`pip install -e` /
+`pipx install --editable`) wird `CANboss/eds` automatisch gefunden und
+der Parameter kann entfallen; sonst gilt `./eds` im aktuellen Verzeichnis.
 
 Die drei Knoten erscheinen nach ihrem ersten Heartbeat als `online`.
 Ausprobieren: beim IO-Modul den Sollwert `2101:00` schreiben (`w`) — die
