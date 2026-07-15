@@ -78,8 +78,10 @@ sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
 
 # Terminal 4: Monitor-TUI (Default vcan0) - Knoten waehlen, r/R liest per SDO
 ./build-monitor/zephyr/zephyr.exe
-# ... oder der komfortablere Python-Monitor (Textual):
-pip install -e CANboss/apps/monitor-py && canboss-monitor
+# ... oder der komfortablere Python-Monitor (Textual); auf PEP-668-Systemen
+# (Arch, Ubuntu 23.04+) per venv oder pipx, siehe apps/monitor-py/README.md:
+python -m venv .venv && .venv/bin/pip install -e CANboss/apps/monitor-py
+.venv/bin/canboss-monitor
 
 # Terminal 5 (optional): Touch-Panel auf denselben Bus
 # (Default ist Loopback -> vcan-Overlay dazubauen)

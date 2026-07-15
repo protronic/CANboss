@@ -12,9 +12,21 @@ Die Netzwerkbeschreibung kommt unveraendert aus [`eds/network.json`](../../eds/)
 
 ## Installation
 
+Auf Distributionen mit PEP-668-Schutz (Arch, Debian 12+, Ubuntu 23.04+)
+verweigert das System-`pip` die Installation ("externally-managed-environment")
+— venv oder pipx verwenden, **kein sudo noetig**:
+
 ```sh
 cd CANboss/apps/monitor-py
-pip install -e .          # installiert textual, python-can, canopen
+
+# Variante A: virtuelles Environment
+python -m venv .venv
+.venv/bin/pip install -e .          # installiert textual, python-can, canopen
+.venv/bin/canboss-monitor           # oder: source .venv/bin/activate
+
+# Variante B: pipx (Arch: pacman -S python-pipx)
+pipx install --editable .
+canboss-monitor
 ```
 
 ## Start
