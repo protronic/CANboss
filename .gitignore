@@ -6,3 +6,4 @@ canboss
 __pycache__/
 *.pyc
 *.egg-info/
+tools/edssharp/
