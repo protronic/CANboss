@@ -52,6 +52,18 @@ ZEPHYR_TOOLCHAIN_VARIANT=host west build -b native_sim/native/64 CANbossTouch/ze
 ./build/zephyr/zephyr.exe
 ```
 
+Bereits geklont? Dann den Workspace um den vorhandenen Klon herum
+anlegen (`west build` gibt es erst innerhalb eines Workspace):
+
+```bash
+cd ..                       # ins Verzeichnis UEBER dem Klon
+west init -l CANbossTouch   # Klon als Manifest-Repo registrieren
+west update                 # holt zephyr + Module daneben
+```
+
+Ein daneben liegender CANboss-Klon baut im selben Workspace mit
+(`west build -b native_sim/native/64 CANboss`).
+
 Ohne SDL2 (CI/Container) laeuft die UI unsichtbar auf einem
 Dummy-Display weiter:
 
