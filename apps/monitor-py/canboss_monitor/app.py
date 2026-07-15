@@ -78,6 +78,7 @@ class NodeScreen(Screen):
         self.auto_refresh_on = True
         self._rr_pos = 0                      # Round-Robin-Position des Auto-Refresh
         self._busy: set[str] = set()          # keys mit laufendem Transfer
+        self._app: App | None = None          # App-Referenz fuer Worker-Threads
 
     # ------------------------------------------------------------- Aufbau
 
@@ -90,6 +91,7 @@ class NodeScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._app = self.app
         self.sub_title = f"Node {self.node.node_id}  {self.node.name}"
         table = self.query_one("#dps", DataTable)
         table.add_columns("Index", "Name", "Typ", "Zugriff", "Limits", "Wert")
@@ -113,6 +115,8 @@ class NodeScreen(Screen):
     # ------------------------------------------------------------- Hilfen
 
     def _status(self, text: str) -> None:
+        if not self.is_mounted:  # Screen bereits verlassen (Worker lief noch)
+            return
         refresh = "AUTO" if self.auto_refresh_on else "man."
         online = self.net.node_online(self.node.node_id)
         hb = {True: "online", False: "OFFLINE", None: "kein Heartbeat"}[online]
@@ -127,11 +131,23 @@ class NodeScreen(Screen):
         return self.rows[table.cursor_row]
 
     def _set_value_cell(self, dp: Datapoint, text: str) -> None:
+        if not self.is_mounted:  # Screen bereits verlassen (Worker lief noch)
+            return
         table = self.query_one("#dps", DataTable)
         try:
             table.update_cell(dp.key, table.ordered_columns[5].key, text)
         except Exception:  # noqa: BLE001 - Zeile ist ggf. weggefiltert
             pass
+
+    def _post(self, fn, *args) -> None:
+        """UI-Update aus dem Worker-Thread in den App-Thread reichen.
+
+        self.app ist nach dem Verlassen des Screens im Thread nicht mehr
+        aufloesbar (NoActiveAppError) - darum die beim Mount eingefangene
+        Referenz; die Ziel-Funktionen pruefen selbst is_mounted.
+        """
+        if self._app is not None and self._app.is_running:
+            self._app.call_from_thread(fn, *args)
 
     # ------------------------------------------------------- SDO-Transfers
 
@@ -139,20 +155,20 @@ class NodeScreen(Screen):
         """Blockierender SDO-Read (laeuft im Worker-Thread)."""
         try:
             value = self.net.sdo_read(self.node.node_id, dp)
-            self.app.call_from_thread(self._set_value_cell, dp, value)
+            self._post(self._set_value_cell, dp, value)
         except Exception as exc:  # noqa: BLE001 - Abort/Timeout anzeigen
-            self.app.call_from_thread(self._set_value_cell, dp, "--")
-            self.app.call_from_thread(self._status, f"{dp.key}: {exc}")
+            self._post(self._set_value_cell, dp, "--")
+            self._post(self._status, f"{dp.key}: {exc}")
         finally:
             self._busy.discard(dp.key)
 
     def _write_dp(self, dp: Datapoint, text: str) -> None:
         try:
             value = self.net.sdo_write(self.node.node_id, dp, text)
-            self.app.call_from_thread(self._set_value_cell, dp, value)
-            self.app.call_from_thread(self._status, f"{dp.key} geschrieben")
+            self._post(self._set_value_cell, dp, value)
+            self._post(self._status, f"{dp.key} geschrieben")
         except Exception as exc:  # noqa: BLE001
-            self.app.call_from_thread(self._status, f"{dp.key}: {exc}")
+            self._post(self._status, f"{dp.key}: {exc}")
         finally:
             self._busy.discard(dp.key)
 
@@ -160,7 +176,7 @@ class NodeScreen(Screen):
         if not self.net.connected or not dp.readable or dp.key in self._busy:
             return
         self._busy.add(dp.key)
-        self.app.run_worker(lambda: self._read_dp(dp), thread=True, group="sdo")
+        self.run_worker(lambda: self._read_dp(dp), thread=True, group="sdo")
 
     def _tick(self) -> None:
         """Auto-Refresh: naechste READS_PER_TICK lesbare Datenpunkte anstossen."""
