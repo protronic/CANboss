@@ -122,6 +122,7 @@ Rust-Original im Offline-Modus (nur Browsen, kein Lesen/Schreiben).
 | `↑` / `↓` | Knoten waehlen |
 | `Enter` | Monitor oeffnen |
 | `/` | Filtern (Enter uebernehmen, Esc abbrechen) |
+| `s` | Berry-Skript-REPL (Zephyr-Build) |
 | `q` | Beenden |
 
 **Parameter-Monitor**
@@ -136,10 +137,36 @@ Rust-Original im Offline-Modus (nur Browsen, kein Lesen/Schreiben).
 | `R` | alle lesbaren Datenpunkte des Objekts lesen |
 | `w` | gewaehlten Datenpunkt schreiben (Enter bestaetigt) |
 | `m` | Auto-Refresh (alle 2 s `R`) ein/aus |
+| `s` | Berry-Skript-REPL (Zephyr-Build) |
 | `q` | Beenden |
 
 Werte-Eingaben: Ganzzahlen dezimal oder `0x`-Hex, `BOOL` auch
 `true`/`false`, `F32` als Gleitkomma, `OCTET` als Hex-Bytefolge.
+
+### Berry-Skript-REPL (Taste `s`)
+
+Der Zephyr-Build enthaelt die [Berry](https://berry-lang.github.io)-VM
+aus `lib/berry_od` (abschaltbar mit `CONFIG_CANBOSS_BERRY=n`). Die
+Taste `s` wechselt in eine interaktive REPL auf demselben Terminal —
+eine vollwertige Skriptsprache, nicht nur OD-Kommandos:
+
+```
+berry> 1 + 2 * 3
+7
+berry> def quad(a)
+berry>> return a * a
+berry>> end
+berry> quad(9)
+81
+berry> od_read(16, 0x2103, 0)          # SDO zum IO-Modul
+250
+berry> for n : od_nodes() print(n, od_reads(n, 0x1008, 0)) end
+```
+
+`help()` zeigt Sprach-Beispiele und die komplette `od_*`-API,
+Pfeil hoch/runter blaettert durch die History, mehrzeilige Bloecke
+(`def`/`for`/`if`) werden mit dem Prompt `>>` fortgesetzt.
+`exit`, `quit` oder Strg-D fuehren zurueck zur Oberflaeche.
 
 ## CAN-Backends
 

@@ -14,6 +14,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "co_node.h" /* OD-Typen fuer canboss_berry.h */
+
 #include "canboss_berry.h"
 
 static cb_berry_sink_t cb_sink;

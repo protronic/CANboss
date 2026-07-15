@@ -20,6 +20,11 @@
 #include "osal.h"
 #include "sdo_value.h"
 #include "tui.h"
+#include "tui_io.h"
+
+#ifdef CANBOSS_BERRY
+#include "canboss_berry.h"
+#endif
 
 #define CB_FILTER_MAX 64
 #define CB_STATUS_MAX 160
@@ -306,6 +311,21 @@ write_selected(cb_ui_t* ui) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Berry-REPL (Taste 's'): TUI kurz verlassen, REPL auf demselben      */
+/* Raw-Mode-Terminal fahren, danach zeichnet die Hauptschleife neu     */
+
+#ifdef CANBOSS_BERRY
+static void
+run_berry_repl(cb_ui_t* ui) {
+    tui_io_write("\x1b[?25h", 6); /* Cursor einblenden */
+    cb_berry_repl_io_t io = {tui_io_getc, tui_io_write};
+    canboss_berry_repl(&io);
+    tui_io_write("\x1b[?25l", 6); /* Cursor wieder aus, TUI uebernimmt */
+    set_status(ui, "Berry-REPL beendet - help() zeigt dort Beispiele");
+}
+#endif
+
+/* ------------------------------------------------------------------ */
 /* Zeichnen                                                            */
 
 static void
@@ -362,7 +382,11 @@ draw_nodes(cb_ui_t* ui) {
         tui_put(2 + row, 2, row == ui->selected_node ? (CB_ST_REVERSE | CB_ST_BOLD) : CB_ST_NONE, line);
     }
 
+#ifdef CANBOSS_BERRY
+    draw_status_bar(ui, "q Ende | Pfeile Auswahl | Enter Monitor | / Filter | s Berry-REPL");
+#else
     draw_status_bar(ui, "q Ende | Pfeile Auswahl | Enter Monitor | / Filter");
+#endif
 }
 
 static void
@@ -426,8 +450,13 @@ draw_monitor(cb_ui_t* ui) {
         }
     }
 
+#ifdef CANBOSS_BERRY
+    draw_status_bar(
+        ui, "q Ende | b zurueck | Pfeile Objekt/Sub | / Filter | r lesen | R alle | w schreiben | m Monitor | s REPL");
+#else
     draw_status_bar(ui,
                     "q Ende | b zurueck | Pfeile Objekt/Sub | / Filter | r lesen | R alle | w schreiben | m Monitor");
+#endif
 }
 
 /* ------------------------------------------------------------------ */
@@ -489,6 +518,11 @@ handle_nodes_key(cb_ui_t* ui, cb_key_t key) {
                 ui->node_filter[0] = '\0';
                 set_status(ui, "Filter: tippen, Enter uebernehmen, Esc abbrechen");
             }
+#ifdef CANBOSS_BERRY
+            if (key.ch == 's') {
+                run_berry_repl(ui);
+            }
+#endif
             break;
         case CB_KEY_UP:
             if (ui->selected_node > 0) {
@@ -574,6 +608,11 @@ handle_monitor_key(cb_ui_t* ui, cb_key_t key) {
                     ui->auto_refresh = !ui->auto_refresh;
                     set_status(ui, ui->auto_refresh ? "Auto-Refresh an" : "Auto-Refresh aus");
                     break;
+#ifdef CANBOSS_BERRY
+                case 's':
+                    run_berry_repl(ui);
+                    break;
+#endif
                 default:
                     break;
             }

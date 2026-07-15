@@ -54,3 +54,8 @@ target_include_directories(app PRIVATE
     ${CBLIB}/od/canboss_master
     ${CANOPEN_DIR}
 )
+
+# Berry-Skript-REPL (Taste 's' in der TUI; gemeinsame Schicht lib/berry_od)
+if(CONFIG_CANBOSS_BERRY)
+    include(${CBLIB}/berry_od/berry.cmake)
+endif()

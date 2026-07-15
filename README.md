@@ -8,7 +8,7 @@ ohne Hardware ueber `vcan0` testen laesst.
 
 | App | Beschreibung | Targets |
 |---|---|---|
-| [apps/monitor](apps/monitor/) | Terminal-Parametermonitor (TUI, Port von CANboss-rs) | native_sim, POSIX (`make`) |
+| [apps/monitor](apps/monitor/) | Terminal-Parametermonitor (TUI, Port von CANboss-rs) + Berry-REPL | native_sim, POSIX (`make`) |
 | [apps/monitor-py](apps/monitor-py/) | Komfort-Monitor in Python (Textual: Maus, Filter, Schreib-Dialog) | Python 3.10+ (`pip install -e .`) |
 | [apps/touch](apps/touch/) | LVGL-Touchpanel mit EDS-generierten Screens + Berry-Scripting | native_sim, stm32h573i_dk |
 | [apps/nodes/demo_io](apps/nodes/demo_io/) | Demo-Knoten 16 "IO-Modul" mit Prozesswert-Simulation | native_sim |
@@ -99,7 +99,8 @@ Was dabei zu sehen ist:
   Sollwert (0x2101) des IO-Moduls setzen: die simulierte Temperatur
   (0x2100) zieht nach; Ziel-Drehzahl (0x6042) + Controlword (0x6040)
   des Antriebs setzen: die Ist-Drehzahl (0x6044) faehrt eine Rampe.
-- Im Panel landen die PDOs der Knoten im Master-OD (0x2110-0x2132) —
+- Im Monitor oeffnet `s` die **Berry-REPL** (help() zeigt Beispiele);
+  im Panel landen die PDOs der Knoten im Master-OD (0x2110-0x2132) —
   per **Berry** skriptbar, z.B.:
   `berry od_readf(48, 0x2300, 1)` (Temperatur des Klimasensors per SDO)
   oder `berry od_localf(0x2130, 1)` (dieselbe Groesse aus dem RPDO).
@@ -126,6 +127,7 @@ tools/                  eds2tui.py, eds2lvgl.py, poc2lvgl.py
 modules/                Submodule: CANopenNode (protronic-Fork), berry
 lib/
   canopen/              gemeinsame Schicht: can_if, osal, co_node, CO-Port
+  berry_od/             Berry-VM + od_*-Bindings + REPL (Monitor 's', Touch-Shell)
   od/                   generierte ODs: canboss_master, demo_io/drive/sensor
 apps/
   monitor/              Terminal-TUI (Zephyr + POSIX-make + Selbsttest)
