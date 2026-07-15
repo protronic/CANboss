@@ -1,0 +1,21 @@
+/* Headless: Dummy-Display als chosen zephyr,display, SDL-Knoten aus. */
+
+/ {
+	chosen {
+		zephyr,display = &dummy_dc;
+	};
+
+	dummy_dc: dummy_dc {
+		compatible = "zephyr,dummy-dc";
+		height = <480>;
+		width = <800>;
+	};
+};
+
+&sdl_dc {
+	status = "disabled";
+};
+
+&input_sdl_touch {
+	status = "disabled";
+};

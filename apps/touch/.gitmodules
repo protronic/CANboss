@@ -1,0 +1,7 @@
+[submodule "Middlewares/CANopen/CANopenNode"]
+	path = Middlewares/CANopen/CANopenNode
+	url = https://github.com/protronic/CANopenNode.git
+[submodule "Middlewares/Third_Party/berry"]
+	path = Middlewares/Third_Party/berry
+	url = https://github.com/berry-lang/berry.git
+	ignore = untracked

@@ -1,0 +1,4 @@
+west:
+  command: /usr/local/bin/west build -d build-touch-h573
+  topdir: /home/user
+  version: 1.5.0

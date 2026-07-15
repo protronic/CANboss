@@ -1,0 +1,3 @@
+"lvgl":"/home/user/modules/lib/gui/lvgl":"${ZEPHYR_LVGL_CMAKE_DIR}"
+"cmsis":"/home/user/modules/hal/cmsis":"${ZEPHYR_CMSIS_CMAKE_DIR}"
+"hal_stm32":"/home/user/modules/hal/stm32":"/home/user/modules/hal/stm32"

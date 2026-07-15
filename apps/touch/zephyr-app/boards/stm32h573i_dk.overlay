@@ -1,0 +1,52 @@
+/*
+ * STM32H573I-DK mit gen4-FT813-70CTP-CLB am Arduino-Header
+ * (Verdrahtung siehe README im Repo-Root):
+ *
+ *   SCK  = D13 = PI1  (SPI2_SCK)     MISO = D12 = PI2  (SPI2_MISO)
+ *   MOSI = D11 = PB15 (SPI2_MOSI)    /CS  = D10 = PA3  (GPIO)
+ *   PD   = D9  = PA8  (GPIO)         INT  = D8  = PG8  (unbenutzt, Touch gepollt)
+ *   CAN  : RX = D3 = PB5 (FDCAN2_RX)  TX = D15 = PB6 (FDCAN2_TX)
+ */
+
+/ {
+	chosen {
+		zephyr,display = &ft813;
+		zephyr,canbus = &fdcan2;
+	};
+
+	lvgl_pointer {
+		compatible = "zephyr,lvgl-pointer-input";
+		input = <&ft813>;
+	};
+};
+
+&spi2 {
+	status = "okay";
+	/* /CS als GPIO statt Hardware-NSS: der FT813 braucht CS ueber
+	 * Header + Nutzdaten einer Transaktion durchgehend aktiv. */
+	pinctrl-0 = <&spi2_sck_pi1 &spi2_miso_pi2 &spi2_mosi_pb15>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpioa 3 GPIO_ACTIVE_LOW>;
+
+	ft813: ft813@0 {
+		compatible = "protronic,ft813";
+		reg = <0>;
+		/* Bring-up laeuft treiberintern mit 8 MHz; Betrieb mit
+		 * 250 MHz Kerneltakt / 16 = 15.625 MHz (FT81x-Maximum 30 MHz) */
+		spi-max-frequency = <15625000>;
+		pd-gpios = <&gpioa 8 GPIO_ACTIVE_LOW>; /* PD_N: low = Power-Down */
+		width = <800>;
+		height = <480>;
+		backlight-duty = <96>;
+		touch-poll-ms = <30>;
+	};
+};
+
+/* CANopen ueber FDCAN2 am Arduino-Header (PB5/PB6); das Onboard-FDCAN1
+ * des DK bleibt frei. */
+&fdcan2 {
+	status = "okay";
+	pinctrl-0 = <&fdcan2_rx_pb5 &fdcan2_tx_pb6>;
+	pinctrl-names = "default";
+	bitrate = <500000>; /* wie der bisherige Firmware-Stand */
+};

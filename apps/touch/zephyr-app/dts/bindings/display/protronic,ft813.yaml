@@ -1,0 +1,39 @@
+# FTDI/Bridgetek FT813 (EVE2) als RGB565-Framebuffer-Display mit
+# kapazitivem Touch (gen4-FT813-70CTP-CLB). Treiber:
+# zephyr-app/drivers/ft813.c - der Host schreibt LVGL-Pixelstreifen in
+# das 1-MiB-RAM_G, eine statische Displayliste scannt die Bitmap aufs
+# Panel; Touch wird zyklisch gepollt und als Input-Events gemeldet.
+
+description: FT813 (EVE2) SPI display controller used as dumb RGB565 framebuffer
+
+compatible: "protronic,ft813"
+
+include: [spi-device.yaml]
+
+properties:
+  pd-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Power-Down-/Reset-Leitung (PD_N, low-aktiv). Asserted = Chip im
+      Power-Down.
+
+  width:
+    type: int
+    default: 800
+    description: Panelbreite in Pixeln
+
+  height:
+    type: int
+    default: 480
+    description: Panelhoehe in Pixeln
+
+  backlight-duty:
+    type: int
+    default: 96
+    description: Backlight-PWM-Tastgrad nach dem Einschalten (0..128)
+
+  touch-poll-ms:
+    type: int
+    default: 30
+    description: Abtastintervall der Touch-Engine in Millisekunden (0 = aus)
