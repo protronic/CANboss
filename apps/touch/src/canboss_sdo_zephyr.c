@@ -28,6 +28,31 @@ cb_sdo_worker(void* arg) {
             continue;
         }
 
+#ifdef CB_DEBUG_FAKE_SDO
+        /* Testpfad ohne Bus: zufaellige Erfolgs-/Fehlerantworten, damit
+         * die UI-Ergebnispfade (cb_apply_read_result) durchlaufen werden */
+        {
+            static uint32_t seed = 0x51e9d3a7u;
+            seed = seed * 1664525u + 1013904223u;
+            k_msleep(1 + (int32_t)((seed >> 8) % 20u));
+            if (((seed >> 16) % 8u) == 0u) {
+                req->abort_code = 0x06020000u; /* Objekt nicht vorhanden */
+                req->state = CB_SDO_ERROR;
+            } else {
+                if (!req->write) {
+                    size_t n = 1u + (size_t)((seed >> 10) % sizeof(req->data));
+                    for (size_t i = 0; i < n; i++) {
+                        seed = seed * 1664525u + 1013904223u;
+                        ((uint8_t*)req->data)[i] = (uint8_t)(seed >> 16);
+                    }
+                    req->len = n;
+                }
+                req->state = CB_SDO_DONE;
+            }
+            continue;
+        }
+#endif
+
         uint32_t abort = 0;
         if (req->write) {
             if (cb_co_sdo_write(req->node_id, req->index, req->sub, (const uint8_t*)req->data, req->len, &abort)

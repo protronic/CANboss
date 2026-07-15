@@ -501,9 +501,27 @@ cb_row_create(lv_obj_t* cont, const canboss_dp_t* dp) {
     return row;
 }
 
+/* Vor dem Aufbau eines neuen Screens aufrufen: gibt die Bindungen frei
+ * und loescht den alten Screen SOFORT (ueber einen leeren Zwischen-
+ * screen). Sonst liegen alter + neuer Screen gleichzeitig im LVGL-Heap
+ * und der Spitzenverbrauch verdoppelt sich - auf Targets mit knappem
+ * LV_Z_MEM_POOL (H573: 40 KiB) schlaegt lv_malloc dann fehl. Der
+ * Zwischenscreen wird nie gerendert (kein lv_timer_handler-Lauf bis
+ * zum canboss_ui_load_screen des fertigen Screens). */
+void
+canboss_ui_screen_prepare(void) {
+    cb_bindings_release();
+    cb_cur_node = NULL;
+    cb_status_led = NULL;
+    cb_keyboard = NULL;
+    if (cb_cur_screen != NULL) {
+        canboss_ui_load_screen(lv_obj_create(NULL));
+    }
+}
+
 lv_obj_t*
 canboss_ui_screen_begin(const canboss_node_desc_t* node) {
-    cb_bindings_release();
+    canboss_ui_screen_prepare();
     cb_cur_node = node;
 
     lv_obj_t* scr = lv_obj_create(NULL);
@@ -742,10 +760,7 @@ cb_menu_poc_clicked(lv_event_t* e) {
 
 void
 canboss_ui_init(void) {
-    cb_bindings_release();
-    cb_cur_node = NULL;
-    cb_status_led = NULL;
-    cb_keyboard = NULL;
+    canboss_ui_screen_prepare();
 
     if (cb_timer == NULL) {
         cb_timer = lv_timer_create(cb_refresh_timer_cb, CB_REFRESH_PERIOD_MS, NULL);

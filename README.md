@@ -9,6 +9,7 @@ ohne Hardware ueber `vcan0` testen laesst.
 | App | Beschreibung | Targets |
 |---|---|---|
 | [apps/monitor](apps/monitor/) | Terminal-Parametermonitor (TUI, Port von CANboss-rs) | native_sim, POSIX (`make`) |
+| [apps/monitor-py](apps/monitor-py/) | Komfort-Monitor in Python (Textual: Maus, Filter, Schreib-Dialog) | Python 3.10+ (`pip install -e .`) |
 | [apps/touch](apps/touch/) | LVGL-Touchpanel mit EDS-generierten Screens + Berry-Scripting | native_sim, stm32h573i_dk |
 | [apps/nodes/demo_io](apps/nodes/demo_io/) | Demo-Knoten 16 "IO-Modul" mit Prozesswert-Simulation | native_sim |
 | [apps/nodes/demo_drive](apps/nodes/demo_drive/) | Demo-Knoten 32 "Antrieb" (CiA402-Teilmenge, Rampen-Sim) | native_sim |
@@ -77,6 +78,8 @@ sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
 
 # Terminal 4: Monitor-TUI (Default vcan0) - Knoten waehlen, r/R liest per SDO
 ./build-monitor/zephyr/zephyr.exe
+# ... oder der komfortablere Python-Monitor (Textual):
+pip install -e CANboss/apps/monitor-py && canboss-monitor
 
 # Terminal 5 (optional): Touch-Panel auf denselben Bus
 # (Default ist Loopback -> vcan-Overlay dazubauen)
@@ -124,6 +127,7 @@ lib/
   od/                   generierte ODs: canboss_master, demo_io/drive/sensor
 apps/
   monitor/              Terminal-TUI (Zephyr + POSIX-make + Selbsttest)
+  monitor-py/           Python-Komfort-Monitor (Textual + canopen, pip)
   touch/                LVGL-Panel + Berry (native_sim, stm32h573i_dk)
   nodes/                Demo-Knoten mit Simulation (common/ + je App)
 ```

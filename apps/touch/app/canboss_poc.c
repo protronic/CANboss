@@ -259,9 +259,9 @@ poc_make_button(lv_obj_t* card, uint32_t index) {
 
 void
 canboss_poc_screen_create(void) {
-    /* SDO-Bindungen des vorherigen Screens loesen, bevor er geloescht wird
-     * (der canboss_ui-Refresh-Timer darf keine toten Widgets anfassen) */
-    canboss_ui_release_bindings();
+    /* Bindungen loesen + alten Screen sofort loeschen (Peak-RAM senken,
+     * der canboss_ui-Refresh-Timer darf keine toten Widgets anfassen) */
+    canboss_ui_screen_prepare();
 
     memset(poc_buttons, 0, sizeof(poc_buttons));
     memset(poc_highlight, 0, sizeof(poc_highlight));

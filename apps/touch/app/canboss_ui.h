@@ -33,6 +33,12 @@ void canboss_ui_load_screen(lv_obj_t* scr);
  * aufrufen, wenn ein app-eigener Screen einen Knoten-Screen ersetzt. */
 void canboss_ui_release_bindings(void);
 
+/* Bindungen loesen UND den alten Screen sofort loeschen, bevor der neue
+ * aufgebaut wird. Haelt den LVGL-Spitzenverbrauch bei max(alt, neu) statt
+ * alt+neu - Pflicht auf Targets mit knappem LV_Z_MEM_POOL. Fuer
+ * app-eigene Screens (z.B. canboss_poc) vor dem Screen-Aufbau aufrufen. */
+void canboss_ui_screen_prepare(void);
+
 /* Neuen Knoten-Screen anlegen (Header mit Zurueck-Knopf + Titel + Status,
  * scrollbare Datenpunktliste) und laden. Liefert den Listencontainer, an
  * den die Row-Fabriken anbauen. */

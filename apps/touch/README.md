@@ -228,6 +228,32 @@ CANopen-Stack statt SDO-Mock: Standard ist der CAN-Loopback (das Panel
 beantwortet seine eigenen SDO-Anfragen), per Overlay auch Host-SocketCAN
 (`vcan0`). Siehe [README.md](README.md).
 
+### Monkey-Test (headless UI-Stresstest)
+
+Zwei Compile-Schalter bauen einen Selbsttest ein, der die Oberfläche
+ohne Fenster dauerbedient: `CB_DEBUG_OPEN_NODE` erzeugt zufällige
+Touch-Eingaben über den echten Zephyr-Input-Pfad (Navigation, Slider,
+Tastatur, ...) und loggt die LVGL-Heap-Belegung; `CB_DEBUG_FAKE_SDO`
+lässt den SDO-Worker zufällige Erfolgs-/Fehlerantworten liefern, damit
+auch die Ergebnispfade der Widgets laufen. Zusammen mit AddressSanitizer
+findet das Speicherfehler, bevor sie am Panel zuschlagen:
+
+```sh
+west build -p -b native_sim/native/64 CANboss/apps/touch -d build-monkey -- \
+  -DCONFIG_SDL_DISPLAY_USE_HARDWARE_ACCELERATOR=n -DCONFIG_ASAN=y \
+  -DCONFIG_SYS_HEAP_RUNTIME_STATS=y \
+  -DEXTRA_CFLAGS="-DCB_DEBUG_OPEN_NODE;-DCB_DEBUG_FAKE_SDO"
+SDL_VIDEODRIVER=dummy ./build-monkey/zephyr/zephyr.exe
+```
+
+Hinweis zum LVGL-Speicher: beim Screen-Wechsel wird der alte Screen
+**vor** dem Aufbau des neuen gelöscht (`canboss_ui_screen_prepare()`),
+damit nie beide gleichzeitig im Pool liegen. Gemessener Spitzenbedarf
+(64-bit native_sim, Monkey-Test): ~56 KiB — `CONFIG_LV_Z_MEM_POOL_SIZE`
+entsprechend dimensionieren (native_sim: 256 KiB, H573: 40 KiB bei
+halbierten 32-bit-Strukturen). `CONFIG_LV_USE_ASSERT_MALLOC=y` macht
+einen vollen Pool als Assert sichtbar statt als Absturz.
+
 ## Berry-Scripting
 
 Das Shell-Kommando `berry` (Konsole/UART) führt Skripte mit direktem
