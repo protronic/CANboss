@@ -33,7 +33,6 @@ target_sources(app PRIVATE
     ${CBLIB}/canopen/osal_zephyr.c
     ${CBLIB}/canopen/co_node.c
     ${CBLIB}/canopen/port/CO_driver.c
-    ${CBLIB}/od/canboss_master/canboss_master.c
     # App-Schicht (LVGL-Screens)
     app/canboss_ui.c
     app/canboss_poc.c
@@ -64,12 +63,16 @@ target_include_directories(app PRIVATE
     app/generated
     ${CBLIB}/canopen
     ${CBLIB}/canopen/port
-    ${CBLIB}/od/canboss_master
     ${CANOPEN_DIR}
     # canboss_types.h nutzt "lvgl/lvgl.h": Elternverzeichnis des
     # LVGL-Moduls aus dem west-Manifest
     ${ZEPHYR_LVGL_MODULE_DIR}/..
 )
+
+# Master-OD: zur Buildzeit aus eds/canboss_master.eds generiert, wenn der
+# EDSSharp-CLI da ist; sonst die eingecheckten Dateien aus lib/od/
+include(${CBLIB}/od/od_codegen.cmake)
+canboss_od_add(canboss_master)
 
 # ---------------------------------------------------------------- Berry
 if(CONFIG_CANBOSSTOUCH_BERRY)

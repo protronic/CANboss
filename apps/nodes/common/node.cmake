@@ -16,7 +16,6 @@ target_sources(app PRIVATE
     ${CBLIB}/canopen/osal_zephyr.c
     ${CBLIB}/canopen/co_node.c
     ${CBLIB}/canopen/port/CO_driver.c
-    ${CBLIB}/od/${NODE_OD}/${NODE_OD}.c
     # CANopenNode-Stack (Submodul, protronic-Fork)
     ${CANOPEN_DIR}/CANopen.c
     ${CANOPEN_DIR}/301/CO_ODinterface.c
@@ -37,6 +36,10 @@ target_include_directories(app PRIVATE
     ${NODE_COMMON}
     ${CBLIB}/canopen
     ${CBLIB}/canopen/port
-    ${CBLIB}/od/${NODE_OD}
     ${CANOPEN_DIR}
 )
+
+# Knoten-OD: zur Buildzeit aus eds/${NODE_OD}.eds generiert, wenn der
+# EDSSharp-CLI da ist; sonst die eingecheckten Dateien aus lib/od/
+include(${CBLIB}/od/od_codegen.cmake)
+canboss_od_add(${NODE_OD})

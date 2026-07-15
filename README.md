@@ -66,6 +66,30 @@ Hardware (STM32H573I-DK mit gen4-FT813-Panel) und der reine
 POSIX-Build des Monitors: siehe [apps/touch/README-zephyr.md](apps/touch/README-zephyr.md)
 bzw. [apps/monitor/README.md](apps/monitor/README.md).
 
+### ODs zur Buildzeit aus den EDS-Dateien generieren
+
+Die Objektverzeichnisse unter `lib/od/` werden mit dem EDSSharp-CLI aus
+dem [CANopenEditor](https://github.com/protronic/CANopenEditor) erzeugt
+(Release `cli-v4.2.3-protronic.1`, Workflow "EDSSharp CLI Release").
+Liegt das Tool vor, generieren die CMake-Builds die ODs bei jeder
+EDS-Aenderung automatisch neu (siehe `lib/od/od_codegen.cmake`):
+
+```bash
+CANboss/tools/get-edssharp.sh     # laedt das Release-Binary nach tools/edssharp/
+west build ...                    # "OD-Codegen aus eds/*.eds mit ..." im Log
+```
+
+Alternativ zeigt die Umgebungsvariable `EDSSHARP` auf ein beliebiges
+EDSSharp-Binary (z.B. lokaler dotnet-Build). Ohne Tool bauen die
+eingecheckten Dateien aus `lib/od/` — der Fallback haelt CI und
+Container ohne .NET am Laufen. Nach EDS-Aenderungen die eingecheckten
+Dateien mit `--export-project` aktualisieren:
+
+```bash
+tools/edssharp/EDSSharp --export-project --infile eds/demo_io.eds \
+  --outdir lib/od/demo_io --od demo_io --canopennode v4
+```
+
 ## Das komplette Netzwerk ueber vcan testen
 
 ```bash
@@ -123,7 +147,7 @@ Hinweise:
 ```
 west.yml                west-Manifest (Zephyr v4.1.0, LVGL, STM32-HAL)
 eds/                    network.json + EDS-Dateien (eine Quelle fuer alles)
-tools/                  eds2tui.py, eds2lvgl.py, poc2lvgl.py
+tools/                  eds2tui.py, eds2lvgl.py, poc2lvgl.py, get-edssharp.sh
 modules/                Submodule: CANopenNode (protronic-Fork), berry
 lib/
   canopen/              gemeinsame Schicht: can_if, osal, co_node, CO-Port

@@ -22,13 +22,12 @@ target_sources(app PRIVATE
     src/tui_io_zephyr.c
     src/sdo_value.c
     ${canboss_gen_sources}
-    # gemeinsame CANopen-Schicht (lib/canopen) + Master-OD
+    # gemeinsame CANopen-Schicht (lib/canopen); Master-OD siehe unten
     ${CBLIB}/canopen/can_if.c
     ${CBLIB}/canopen/can_zephyr.c
     ${CBLIB}/canopen/osal_zephyr.c
     ${CBLIB}/canopen/co_node.c
     ${CBLIB}/canopen/port/CO_driver.c
-    ${CBLIB}/od/canboss_master/canboss_master.c
     # CANopenNode-Stack (Submodul, protronic-Fork); nicht benoetigte
     # Module (LSS, LEDs, SRDO, Gateway) sind per CO_CONFIG in
     # lib/canopen/port/CO_driver_target.h deaktiviert.
@@ -51,9 +50,13 @@ target_include_directories(app PRIVATE
     src/gen
     ${CBLIB}/canopen
     ${CBLIB}/canopen/port
-    ${CBLIB}/od/canboss_master
     ${CANOPEN_DIR}
 )
+
+# Master-OD: zur Buildzeit aus eds/canboss_master.eds generiert, wenn der
+# EDSSharp-CLI da ist; sonst die eingecheckten Dateien aus lib/od/
+include(${CBLIB}/od/od_codegen.cmake)
+canboss_od_add(canboss_master)
 
 # Berry-Skript-REPL (Taste 's' in der TUI; gemeinsame Schicht lib/berry_od)
 if(CONFIG_CANBOSS_BERRY)
