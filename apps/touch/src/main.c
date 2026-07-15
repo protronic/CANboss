@@ -16,6 +16,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <zephyr/device.h>
+#include <zephyr/drivers/display.h>
+
 #include <zephyr/kernel.h>
 
 #include "lvgl/lvgl.h"
@@ -51,6 +54,14 @@ main(void) {
 #ifdef CONFIG_CANBOSSTOUCH_BERRY
     canboss_berry_init();
 #endif
+
+    /* Display einschalten: der SDL-Treiber (native_sim) praesentiert
+     * erst nach blanking_off, am FT813 schaltet es das Backlight ein.
+     * (Das LVGL-Modul selbst ruft blanking_off nicht auf.) */
+    const struct device* display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+    if (device_is_ready(display)) {
+        (void)display_blanking_off(display);
+    }
 
     canboss_ui_init();
 
