@@ -1,35 +1,34 @@
 /**
  * canboss_berry.c
  *
- * Berry-VM mit od_*-Bindings (siehe canboss_berry.h) und
- * Zephyr-Shell-Kommando "berry".
+ * Berry-VM mit od_*-Bindings (siehe canboss_berry.h) - gemeinsame
+ * Schicht fuer alle Apps (Touch-Panel: Shell-Kommando "berry",
+ * Monitor: interaktive REPL, siehe berry_repl.c).
  *
  * Remote-Zugriffe laufen ueber die blockierenden SDO-Transfers aus
- * lib/canopen/co_node.c (mit dem SDO-Worker der UI serialisiert), lokale
- * OD-Zugriffe ueber die OD-Schnittstelle von CANopenNode unter
- * CO_LOCK_OD - dort liegen auch die per RPDO empfangenen PDO-Werte
- * (z.B. 0x2110 Analogeingaenge, 0x2111 Temperatur).
+ * lib/canopen/co_node.c, lokale OD-Zugriffe ueber die OD-Schnittstelle
+ * von CANopenNode unter CO_LOCK_OD - dort liegen auch die per RPDO
+ * empfangenen PDO-Werte (z.B. 0x2110 Analogeingaenge, 0x2111 Temperatur).
  */
-
-#include "canboss_berry.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <zephyr/kernel.h>
-#include <zephyr/shell/shell.h>
-
 #include "berry.h"
 
-#include "CANopen.h"
-#include "canboss_master.h"
-
-#include "canboss_types.h"
-#include "co_node.h"
+#include "co_node.h" /* bringt CANopen.h (OD_*-Typen) mit */
 #include "osal.h"
 
+#include "canboss_berry.h" /* nach co_node.h (OD_t) */
+
+/* groesster Datenpunkt (VISIBLE_STRING/OCTET) fuer SDO-Puffer */
+#define CB_BERRY_DATA_MAX 64
+
 static bvm* cb_vm;
+static OD_t* cb_local_od;                 /* eigenes OD (canboss_berry_init) */
+static uint8_t cb_node_ids[64];           /* Registry fuer od_nodes() */
+static uint16_t cb_node_id_count;
 
 /* ------------------------------------------------------------------ */
 /* Hilfen                                                              */
@@ -138,7 +137,7 @@ m_od_write(bvm* vm) {
     uint16_t index = (uint16_t)be_toint(vm, 2);
     uint8_t sub = (uint8_t)be_toint(vm, 3);
 
-    uint8_t buf[CANBOSS_DP_DATA_MAX];
+    uint8_t buf[CB_BERRY_DATA_MAX];
     size_t len;
 
     if (be_isstring(vm, 4)) {
@@ -179,7 +178,10 @@ m_od_write(bvm* vm) {
 /* Liefert Laenge des Subeintrags oder 0 bei Fehler */
 static size_t
 cb_local_len(uint16_t index, uint8_t sub, OD_entry_t** entry_out) {
-    OD_entry_t* entry = OD_find(canboss_master, index);
+    if (cb_local_od == NULL) {
+        return 0;
+    }
+    OD_entry_t* entry = OD_find(cb_local_od, index);
     if (entry == NULL) {
         return 0;
     }
@@ -305,13 +307,48 @@ m_od_local_write(bvm* vm) {
 static int
 m_od_nodes(bvm* vm) {
     be_newobject(vm, "list");
-    for (uint16_t i = 0; i < canboss_node_count; i++) {
-        be_pushint(vm, canboss_nodes[i]->node_id);
+    for (uint16_t i = 0; i < cb_node_id_count; i++) {
+        be_pushint(vm, cb_node_ids[i]);
         be_data_push(vm, -2);
         be_pop(vm, 1);
     }
     be_pop(vm, 1);
     be_return(vm);
+}
+
+/* ------------------------------------------------------------------ */
+/* help(): Vorschlaege fuer die REPL/Shell                             */
+
+static void
+cb_help_write(const char* s) {
+    be_writebuffer(s, strlen(s));
+}
+
+static int
+m_help(bvm* vm) {
+    cb_help_write("Berry " BERRY_VERSION " - https://berry-lang.github.io\n"
+                  "\n"
+                  "Sprache (Auswahl):\n"
+                  "  1 + 2 * 3                        var x = 42   print(\"x =\", x)\n"
+                  "  for i : 1..4 print(i) end        while x > 0  x -= 1  end\n"
+                  "  def quad(a) return a * a end     quad(7)\n"
+                  "  l = [1, 2, 3]   l.push(4)        m = {\"a\": 1}   m[\"b\"] = 2\n"
+                  "  s = \"CAN\" + \"boss\"               string.format(\"0x%04X\", 4096)\n"
+                  "  math.sin(math.pi / 2)            import json   json.dump(m)\n"
+                  "\n"
+                  "CANopen (od_*, Demo-Netzwerk: Knoten 16/32/48):\n"
+                  "  od_nodes()                        Knoten aus eds/network.json\n"
+                  "  od_read(16, 0x2103, 0)            SDO lesen -> int\n"
+                  "  od_reads(16, 0x1008, 0)           SDO lesen -> string (Geraetename)\n"
+                  "  od_readf(48, 0x2300, 1)           SDO lesen -> real (REAL32)\n"
+                  "  od_write(16, 0x2101, 0, 300, 2)   SDO schreiben (int, size 1/2/4/8)\n"
+                  "  od_write(16, 0x2102, 0, \"Neu\")    SDO schreiben (string)\n"
+                  "  od_local(0x1017, 0)               eigenes OD (inkl. RPDO-Werte)\n"
+                  "  od_local_write(0x1017, 0, 500, 2) eigenes OD schreiben\n"
+                  "\n"
+                  "exit oder Strg-D beendet die REPL.\n");
+    (void)vm;
+    be_return_nil(vm);
 }
 
 /* ------------------------------------------------------------------ */
@@ -362,7 +399,8 @@ canboss_berry_exec(const char* code) {
 }
 
 void
-canboss_berry_init(void) {
+canboss_berry_init(OD_t* local_od) {
+    cb_local_od = local_od;
     if (cb_vm != NULL) {
         return;
     }
@@ -376,42 +414,21 @@ canboss_berry_init(void) {
     be_regfunc(cb_vm, "od_localf", m_od_localf);
     be_regfunc(cb_vm, "od_local_write", m_od_local_write);
     be_regfunc(cb_vm, "od_nodes", m_od_nodes);
+    be_regfunc(cb_vm, "help", m_help);
 }
 
-/* ------------------------------------------------------------------ */
-/* Shell-Kommando: berry <skript>                                      */
-
-static void
-cb_shell_sink(void* user, const char* buf, size_t len) {
-    const struct shell* sh = (const struct shell*)user;
-    shell_fprintf(sh, SHELL_NORMAL, "%.*s", (int)len, buf);
-}
-
-static int
-cmd_berry(const struct shell* sh, size_t argc, char** argv) {
-    if (cb_vm == NULL) {
-        shell_error(sh, "Berry-VM nicht initialisiert");
-        return -1;
+void
+canboss_berry_set_nodes(const uint8_t* ids, uint16_t count) {
+    if (count > (uint16_t)(sizeof(cb_node_ids) / sizeof(cb_node_ids[0]))) {
+        count = (uint16_t)(sizeof(cb_node_ids) / sizeof(cb_node_ids[0]));
     }
-
-    /* Argumente wieder zu einem Skripttext zusammensetzen */
-    static char code[CONFIG_SHELL_CMD_BUFF_SIZE];
-    code[0] = '\0';
-    size_t pos = 0;
-    for (size_t i = 1; i < argc; i++) {
-        int w = snprintf(code + pos, sizeof(code) - pos, "%s%s", i > 1 ? " " : "", argv[i]);
-        if (w < 0 || (size_t)w >= sizeof(code) - pos) {
-            break;
-        }
-        pos += (size_t)w;
+    if (ids != NULL) {
+        memcpy(cb_node_ids, ids, count);
+        cb_node_id_count = count;
     }
-
-    cb_berry_set_sink(cb_shell_sink, (void*)sh);
-    int ret = canboss_berry_exec(code);
-    cb_berry_set_sink(NULL, NULL);
-    return ret;
 }
 
-SHELL_CMD_ARG_REGISTER(berry, NULL,
-                       "Berry-Skript ausfuehren, z.B.: berry print(od_read(127,0x1017,0))",
-                       cmd_berry, 2, 32);
+void*
+canboss_berry_vm(void) {
+    return cb_vm;
+}

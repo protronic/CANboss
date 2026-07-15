@@ -130,7 +130,15 @@ main(void) {
     canboss_sdo_init();
 
 #ifdef CONFIG_CANBOSSTOUCH_BERRY
-    canboss_berry_init();
+    canboss_berry_init(canboss_master);
+    {
+        uint8_t ids[64];
+        uint16_t n = canboss_node_count < 64 ? canboss_node_count : 64;
+        for (uint16_t i = 0; i < n; i++) {
+            ids[i] = canboss_nodes[i]->node_id;
+        }
+        canboss_berry_set_nodes(ids, n);
+    }
 #endif
 
     /* Ohne bereites Display hat lvgl_init() (SYS_INIT des LVGL-Moduls)

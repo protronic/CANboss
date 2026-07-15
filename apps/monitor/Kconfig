@@ -23,4 +23,13 @@ config CANBOSS_TUI_COLS
 	range 60 400
 	default 120
 
+config CANBOSS_BERRY
+	bool "Berry-Skript-REPL (Taste 's')"
+	default y
+	help
+	  Interaktive Berry-REPL in der Terminal-UI (lib/berry_od):
+	  Skriptsprache mit od_read/od_write-Zugriff auf das CANopen-
+	  Netzwerk; help() zeigt Beispiele. Kostet ~200 KiB Flash/Host-
+	  Binary; abschaltbar fuer minimale Builds.
+
 source "Kconfig.zephyr"

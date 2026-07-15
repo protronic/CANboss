@@ -21,7 +21,12 @@
 #include "can_if.h"
 #include "co_node.h"
 #include "canboss_master.h" /* nach co_node.h (CANopenNode-Typen) */
+#include "canboss_net.h"
 #include "ui.h"
+
+#ifdef CANBOSS_BERRY
+#include "canboss_berry.h"
+#endif
 
 int
 main(void) {
@@ -35,6 +40,18 @@ main(void) {
     if (cb_co_start(canboss_master, &cb_master_config, backend, "zephyr,canbus", 0, CONFIG_CANBOSS_NODE_ID) != 0) {
         printf("Warnung: %s - starte im Offline-Modus\r\n", cb_co_error());
     }
+
+#ifdef CANBOSS_BERRY
+    canboss_berry_init(canboss_master);
+    {
+        uint8_t ids[64];
+        uint16_t n = cb_net_node_count < 64 ? cb_net_node_count : 64;
+        for (uint16_t i = 0; i < n; i++) {
+            ids[i] = cb_net_nodes[i]->node_id;
+        }
+        canboss_berry_set_nodes(ids, n);
+    }
+#endif
 
     (void)cb_ui_run(0, "zephyr/can");
 
