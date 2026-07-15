@@ -1,0 +1,11 @@
+/* CI/Container ohne Kernel-CAN: zurueck auf den internen Loopback. */
+
+/ {
+	chosen {
+		zephyr,canbus = &can_loopback0;
+	};
+};
+
+&can0 {
+	status = "disabled";
+};

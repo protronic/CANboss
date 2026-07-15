@@ -1,0 +1,18 @@
+/*
+ * Demo-Knoten haengen standardmaessig am Host-SocketCAN (vcan0) -
+ * dafuer sind sie da. Interface anlegen:
+ *   sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
+ * Anderes Interface: ./zephyr.exe -can-if=<name>
+ * Ohne Kernel-CAN (CI): -DEXTRA_DTC_OVERLAY_FILE=overlays/loopback.overlay
+ */
+
+/ {
+	chosen {
+		zephyr,canbus = &can0;
+	};
+};
+
+&can0 {
+	status = "okay";
+	host-interface = "vcan0";
+};

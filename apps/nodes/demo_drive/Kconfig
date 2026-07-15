@@ -1,0 +1,8 @@
+mainmenu "CANboss Demo-Knoten Antrieb"
+
+config DEMO_NODE_ID
+	int "CANopen-Node-ID"
+	range 1 127
+	default 32
+
+source "Kconfig.zephyr"

@@ -1,4 +1,5 @@
-build/
-build-*/
-canboss
 *.o
+build*/
+build-*/
+build/
+canboss

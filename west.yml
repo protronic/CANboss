@@ -1,14 +1,20 @@
-# West-Manifest: CANboss als Zephyr-Applikation (T2-Topologie,
-# CANboss ist das Manifest-Repository).
+# West-Manifest: CANboss-Monorepo als Zephyr-Workspace (T2-Topologie,
+# dieses Repo ist das Manifest-Repository).
 #
 # Einrichtung:
 #   mkdir canboss-workspace && cd canboss-workspace
 #   west init -m https://github.com/protronic/CANboss
 #   west update
-#   git -C CANboss submodule update --init   # CANopenNode
+#   git -C CANboss submodule update --init
 #
-# native_sim braucht keine HAL-Module, daher wird nur zephyr selbst
-# geholt (ohne import).
+# Bereits geklont? Workspace um den Klon herum anlegen:
+#   cd <verzeichnis-ueber-dem-klon>
+#   west init -l CANboss && west update
+#
+# Apps (alle: west build -b native_sim/native/64 CANboss/apps/<name>):
+#   apps/monitor        Terminal-Monitor (TUI; auch POSIX-Build via make)
+#   apps/touch          LVGL-Touchpanel (native_sim + stm32h573i_dk)
+#   apps/nodes/demo_*   Demo-Knoten (IO/Antrieb/Klimasensor) fuer vcan-Tests
 
 manifest:
   self:
@@ -24,3 +30,21 @@ manifest:
       revision: v4.1.0
       path: zephyr
       west-commands: scripts/west-commands.yml
+    - name: lvgl
+      remote: zephyrproject-rtos
+      revision: 1ed1ddd881c3784049a92bb9fe37c38c6c74d998   # LVGL 9.3 (Stand Zephyr v4.1.0)
+      path: modules/lib/gui/lvgl
+    # fuer Hardware-Targets (stm32h573i_dk); Revisionen = Zephyr v4.1.0
+    - name: cmsis
+      remote: zephyrproject-rtos
+      revision: d1b8b20b6278615b00e136374540eb1c00dcabe7
+      path: modules/hal/cmsis
+    - name: cmsis_6
+      remote: zephyrproject-rtos
+      repo-path: CMSIS_6
+      revision: 783317a3072554acbac86cca2ff24928cbf98d30
+      path: modules/lib/cmsis_6
+    - name: hal_stm32
+      remote: zephyrproject-rtos
+      revision: 55043bcc35fffa3b4a8c75a696d932b5020aad09
+      path: modules/hal/stm32

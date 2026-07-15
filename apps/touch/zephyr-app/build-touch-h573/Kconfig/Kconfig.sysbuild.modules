@@ -1,9 +1,0 @@
-config ZEPHYR_LVGL_MODULE
-   bool
-   default y
-config ZEPHYR_CMSIS_MODULE
-   bool
-   default y
-config ZEPHYR_HAL_STM32_MODULE
-   bool
-   default y
