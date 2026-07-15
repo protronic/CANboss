@@ -43,6 +43,32 @@ Als `--interface` funktioniert jedes python-can-Interface (socketcan, serial,
 slcan, pcan, kvaser, virtual, ...) — damit ist auch die serielle
 CAN-Anbindung abgedeckt.
 
+## Beispiel: Demo-Netzwerk ueber vcan
+
+Komplettes Setup ohne Hardware — vcan anlegen, die simulierten Demo-Knoten
+aus dem Monorepo starten (Build siehe [Root-README](../../README.md)), Monitor
+dazu:
+
+```sh
+# einmalig: virtuelles CAN-Interface
+sudo ip link add dev vcan0 type vcan
+sudo ip link set vcan0 up
+
+# Terminals 1-3: Demo-Knoten (haengen per Default an vcan0)
+./build-io/zephyr/zephyr.exe        # Node 16  IO-Modul
+./build-drive/zephyr/zephyr.exe     # Node 32  Antrieb
+./build-sensor/zephyr/zephyr.exe    # Node 48  Klimasensor
+
+# Terminal 4: der Monitor (socketcan + vcan0 sind die Defaults)
+canboss-monitor --interface socketcan --channel vcan0
+```
+
+Die drei Knoten erscheinen nach ihrem ersten Heartbeat als `online`.
+Ausprobieren: beim IO-Modul den Sollwert `2101:00` schreiben (`w`) — die
+simulierte Temperatur `2100:00` zieht im Auto-Refresh nach; beim Antrieb
+Ziel-Drehzahl `6042:00` + Controlword `6040:00` = 1 setzen, dann faehrt
+die Ist-Drehzahl `6044:00` eine Rampe.
+
 ## Bedienung
 
 | Taste | Funktion |
