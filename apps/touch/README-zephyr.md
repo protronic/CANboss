@@ -109,6 +109,47 @@ ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb GNUARMEMB_TOOLCHAIN_PATH=/usr \
   west build -b stm32h573i_dk CANboss/apps/touch -- -DTOOLCHAIN_HAS_PICOLIBC=ON
 ```
 
+### Serielle Shell (FT813-Diagnose)
+
+Der Flash-Runner `stm32cubeprogrammer` oeffnet **keine** Konsole
+(`west attach` gibt es hier nicht). Shell und `eve`-Kommandos laufen
+ueber die ST-Link-VCP (`USART1`, 115200 8N1):
+
+```bash
+# Arch: picocom; Device oft /dev/ttyACM0 (Gruppe uucp)
+picocom -b 115200 /dev/ttyACM0
+# Beenden: Ctrl-A Ctrl-X
+```
+
+Danach in der Shell z.B. `eve status`, `eve reset`, `eve touch 20`,
+`eve pwm 64`. Parallel flashen/debuggen: picocom vorher beenden
+(sonst blockiert das Device oft den Probe).
+
+### Debug in Cursor (CrossWorks-aehnlich)
+
+Im Workspace-Root liegen `.vscode/tasks.json` und `launch.json`
+(probe-rs + ST-Link). Extension: `probe-rs.probe-rs-debugger`.
+
+| Aktion | Shortcut / Menue |
+| --- | --- |
+| Bauen | `Ctrl+Shift+B` → *west: build touch* |
+| Flashen | *Terminal → Run Task → west: flash touch* |
+| Debug (flash + Breakpoints) | `F5` → *Touch: Debug (flash + run)* |
+| Nur anhaengen | *Touch: Attach* |
+| Serielle Shell | Run Task → *serial: picocom* |
+
+Breakpoint in `main.c` / `lv_draw_eve_zephyr.c` setzen, `F5`, Step
+mit `F10`/`F11`. Die ELF liegt unter `build/zephyr/zephyr.elf`.
+
+CLI-Alternative (GDB im Terminal, flasht mit):
+
+```bash
+export ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk
+export PATH=/opt/stm32cubeprog/bin:$PATH
+west debug -d build          # Default-Runner: pyocd
+# west attach -d build       # ohne erneutes Flashen
+```
+
 Das Board-Overlay (`boards/stm32h573i_dk.overlay`) bindet das
 gen4-FT813-Modul am Arduino-Header an (SPI2 PI1/PI2/PB15, /CS PA3,
 PD PA8 — Verdrahtung siehe README im Repo-Root) und CANopen an FDCAN2

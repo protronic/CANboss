@@ -439,6 +439,28 @@ cb_slider_event_cb(lv_event_t* e) {
     }
 }
 
+/* Tastatur erst bei Text-Fokus anlegen: lv_keyboard_create kostet Dutzende
+ * Button-Objekte und sprengte zusammen mit 20+ EDS-Zeilen den LVGL-Heap
+ * (Node 16: Bus Fault in lv_obj_refresh_ext_draw_size). */
+static lv_obj_t*
+cb_keyboard_ensure(lv_obj_t* ta) {
+    if (cb_keyboard != NULL) {
+        return cb_keyboard;
+    }
+    lv_obj_t* scr = lv_obj_get_screen(ta);
+    if (scr == NULL) {
+        return NULL;
+    }
+    cb_keyboard = lv_keyboard_create(scr);
+    if (cb_keyboard == NULL) {
+        printf("LVGL OOM: Tastatur nicht anlegbar\n");
+        return NULL;
+    }
+    lv_obj_add_flag(cb_keyboard, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_align(cb_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    return cb_keyboard;
+}
+
 static void
 cb_textarea_event_cb(lv_event_t* e) {
     cb_binding_t* b = (cb_binding_t*)lv_event_get_user_data(e);
@@ -446,9 +468,10 @@ cb_textarea_event_cb(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_FOCUSED) {
-        if (cb_keyboard != NULL) {
-            lv_keyboard_set_textarea(cb_keyboard, ta);
-            lv_obj_remove_flag(cb_keyboard, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_t* kb = cb_keyboard_ensure(ta);
+        if (kb != NULL) {
+            lv_keyboard_set_textarea(kb, ta);
+            lv_obj_remove_flag(kb, LV_OBJ_FLAG_HIDDEN);
         }
         return;
     }
@@ -475,7 +498,15 @@ cb_textarea_event_cb(lv_event_t* e) {
 
 static lv_obj_t*
 cb_row_create(lv_obj_t* cont, const canboss_dp_t* dp) {
+    if (cont == NULL) {
+        return NULL;
+    }
     lv_obj_t* row = lv_obj_create(cont);
+    if (row == NULL) {
+        printf("LVGL OOM: Datenpunktzeile '%s' (Pool=%u)\n", dp->name,
+               (unsigned)CONFIG_LV_Z_MEM_POOL_SIZE);
+        return NULL;
+    }
     lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -490,6 +521,11 @@ cb_row_create(lv_obj_t* cont, const canboss_dp_t* dp) {
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* left = lv_obj_create(row);
+    if (left == NULL) {
+        lv_obj_delete(row);
+        printf("LVGL OOM: Zeilen-Label-Container\n");
+        return NULL;
+    }
     lv_obj_set_size(left, LV_PCT(55), LV_SIZE_CONTENT);
     lv_obj_set_style_border_width(left, 0, 0);
     lv_obj_set_style_pad_all(left, 0, 0);
@@ -497,13 +533,17 @@ cb_row_create(lv_obj_t* cont, const canboss_dp_t* dp) {
     lv_obj_remove_flag(left, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* name = lv_label_create(left);
-    lv_label_set_text(name, dp->name);
-    lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(name, LV_PCT(100));
+    if (name != NULL) {
+        lv_label_set_text(name, dp->name);
+        lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(name, LV_PCT(100));
+    }
 
     lv_obj_t* addr = lv_label_create(left);
-    lv_label_set_text_fmt(addr, "0x%04X.%02X", dp->index, dp->sub);
-    lv_obj_set_style_text_color(addr, lv_palette_main(LV_PALETTE_GREY), 0);
+    if (addr != NULL) {
+        lv_label_set_text_fmt(addr, "0x%04X.%02X", dp->index, dp->sub);
+        lv_obj_set_style_text_color(addr, lv_palette_main(LV_PALETTE_GREY), 0);
+    }
 
     return row;
 }
@@ -532,6 +572,10 @@ canboss_ui_screen_begin(const canboss_node_desc_t* node) {
     cb_cur_node = node;
 
     lv_obj_t* scr = lv_obj_create(NULL);
+    if (scr == NULL) {
+        printf("LVGL OOM: Screen Node %u\n", node->node_id);
+        return NULL;
+    }
     lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(scr, 0, 0);
     lv_obj_set_style_pad_row(scr, 0, 0);
@@ -568,11 +612,7 @@ canboss_ui_screen_begin(const canboss_node_desc_t* node) {
     lv_obj_set_style_pad_row(cont, 4, 0);
     lv_obj_set_style_radius(cont, 0, 0);
 
-    /* Geteilte Tastatur fuer Text-Eingaben (zunaechst versteckt) */
-    cb_keyboard = lv_keyboard_create(scr);
-    lv_obj_add_flag(cb_keyboard, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(cb_keyboard, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_align(cb_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    /* Tastatur bewusst nicht hier: siehe cb_keyboard_ensure(). */
 
     canboss_ui_load_screen(scr);
     return cont;
@@ -603,6 +643,9 @@ canboss_ui_release_bindings(void) {
 void
 canboss_ui_add_value_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
     lv_obj_t* row = cb_row_create(cont, dp);
+    if (row == NULL) {
+        return;
+    }
     cb_binding_t* b = cb_binding_alloc(node, dp);
 
     lv_obj_t* val = lv_label_create(row);
@@ -617,6 +660,9 @@ canboss_ui_add_value_row(lv_obj_t* cont, const canboss_node_desc_t* node, const 
 void
 canboss_ui_add_bar_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
     lv_obj_t* row = cb_row_create(cont, dp);
+    if (row == NULL) {
+        return;
+    }
     cb_binding_t* b = cb_binding_alloc(node, dp);
 
     lv_obj_t* box = lv_obj_create(row);
@@ -645,6 +691,9 @@ canboss_ui_add_bar_row(lv_obj_t* cont, const canboss_node_desc_t* node, const ca
 void
 canboss_ui_add_switch_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
     lv_obj_t* row = cb_row_create(cont, dp);
+    if (row == NULL) {
+        return;
+    }
     cb_binding_t* b = cb_binding_alloc(node, dp);
 
     lv_obj_t* sw = lv_switch_create(row);
@@ -657,6 +706,9 @@ canboss_ui_add_switch_row(lv_obj_t* cont, const canboss_node_desc_t* node, const
 void
 canboss_ui_add_slider_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
     lv_obj_t* row = cb_row_create(cont, dp);
+    if (row == NULL) {
+        return;
+    }
     cb_binding_t* b = cb_binding_alloc(node, dp);
 
     lv_obj_t* box = lv_obj_create(row);
@@ -689,6 +741,9 @@ canboss_ui_add_slider_row(lv_obj_t* cont, const canboss_node_desc_t* node, const
 void
 canboss_ui_add_spinbox_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
     lv_obj_t* row = cb_row_create(cont, dp);
+    if (row == NULL) {
+        return;
+    }
     cb_binding_t* b = cb_binding_alloc(node, dp);
 
     lv_obj_t* box = lv_obj_create(row);
@@ -734,6 +789,9 @@ canboss_ui_add_spinbox_row(lv_obj_t* cont, const canboss_node_desc_t* node, cons
 void
 canboss_ui_add_text_row(lv_obj_t* cont, const canboss_node_desc_t* node, const canboss_dp_t* dp) {
     lv_obj_t* row = cb_row_create(cont, dp);
+    if (row == NULL) {
+        return;
+    }
     cb_binding_t* b = cb_binding_alloc(node, dp);
 
     lv_obj_t* ta = lv_textarea_create(row);
