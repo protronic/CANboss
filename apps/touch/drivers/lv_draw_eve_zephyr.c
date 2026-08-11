@@ -86,6 +86,11 @@ static uint32_t eve_dl_last;
 static uint32_t eve_dl_max;
 static uint32_t eve_fault_count;
 
+/* Haenger-Diagnose: SPI-Aktivitaet und "steckt in lv_timer_handler seit".
+ * Nur der UI-Thread schreibt; racy Reads aus der Shell sind ok. */
+static volatile uint32_t eve_spi_ops;
+static volatile int64_t eve_lvgl_since;
+
 /* Der SPI-Bus wird von der LVGL-Schleife (Main) und von den eve-Shell-
  * Kommandos genutzt. DRAW_EVE haelt CS ueber ganze Transaktionen hinweg,
  * darum darf sich niemand dazwischendraengen. */
@@ -274,6 +279,7 @@ eve_op_cb(lv_display_t *disp, lv_draw_eve_operation_t operation, void *data, uin
 		break;
 	case LV_DRAW_EVE_OPERATION_SPI_SEND:
 		if (data != NULL && length > 0) {
+			eve_spi_ops++;
 			int ret = eve_spi_send(data, length);
 			if (ret != 0) {
 				eve_spi_err_report("send", ret);
@@ -282,6 +288,7 @@ eve_op_cb(lv_display_t *disp, lv_draw_eve_operation_t operation, void *data, uin
 		break;
 	case LV_DRAW_EVE_OPERATION_SPI_RECEIVE:
 		if (data != NULL && length > 0) {
+			eve_spi_ops++;
 			int ret = eve_spi_recv(data, length);
 			if (ret != 0) {
 				eve_spi_err_report("recv", ret);
@@ -470,7 +477,9 @@ canboss_eve_timer_handler(void)
 	 * duerfen nicht in eine offene CMDB-Transaktion greifen. */
 	EVE_end_cmd_burst();
 
+	eve_lvgl_since = t0;
 	sleep_ms = lv_timer_handler();
+	eve_lvgl_since = 0;
 
 	/* Auch nach dem Frame: Burst zu, bevor Diagnose-Register gelesen
 	 * werden (und bevor der naechste Indev-Read kommt). */
@@ -534,8 +543,33 @@ static int
 eve_shell_lock(const struct shell *sh)
 {
 	if (k_mutex_lock(&eve_bus_lock, K_MSEC(800)) != 0) {
-		shell_error(sh, "EVE-Bus belegt (>800 ms) - UI haengt in LVGL/SPI "
-				"(oft CMDB/Displaylisten-Ueberlauf)");
+		/* Wer haengt wie? SPI-Aktivitaet 100 ms lang beobachten:
+		 * Ops > 0  -> Renderschleife kommt nicht zum Ende
+		 * Ops == 0 -> reiner CPU-Spin (LVGL-Assert, Dispatch-Wait, ...) */
+		uint32_t ops0 = eve_spi_ops;
+		int64_t since = eve_lvgl_since;
+
+		k_msleep(100);
+
+		uint32_t delta = eve_spi_ops - ops0;
+
+		if (since != 0) {
+			shell_error(sh, "EVE-Bus belegt - UI-Thread steckt seit %lld ms in "
+					"lv_timer_handler",
+				    k_uptime_get() - since);
+		} else {
+			shell_error(sh, "EVE-Bus belegt (>800 ms), aber nicht in lv_timer_handler");
+		}
+		if (delta > 0) {
+			shell_error(sh, "SPI aktiv (%u Ops/100 ms): Frame wird endlos neu "
+					"gebaut - Displayliste/Timer pruefen ('eve status' spaeter "
+					"erneut)",
+				    delta);
+		} else {
+			shell_error(sh, "kein SPI-Verkehr: CPU-Spin - LVGL-Assert (Heap voll? "
+					"CONFIG_LV_Z_MEM_POOL_SIZE), Dispatch-Wait oder "
+					"Endlosschleife; Konsole auf LVGL-ASSERT/-WARN pruefen");
+		}
 		return -EBUSY;
 	}
 	return 0;
