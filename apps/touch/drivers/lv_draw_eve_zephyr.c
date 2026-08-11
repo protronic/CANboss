@@ -30,8 +30,10 @@
 
 #include <lvgl/lvgl.h>
 #include <lvgl/src/display/lv_display_private.h>
+#include <lvgl/src/draw/eve/lv_draw_eve_private.h>
 #include <lvgl/src/drivers/draw/eve/lv_draw_eve_display.h>
 #include <lvgl/src/drivers/draw/eve/lv_draw_eve_display_defines.h>
+#include <lvgl/src/libs/FT800-FT813/EVE_commands.h>
 
 LOG_MODULE_REGISTER(canboss_eve, CONFIG_DISPLAY_LOG_LEVEL);
 
@@ -72,6 +74,16 @@ struct canboss_eve_ctx {
 
 static struct canboss_eve_ctx eve_ctx;
 static lv_display_t *eve_disp;
+
+/* RAM_DL des FT81x fasst 8 KiB. Laeuft eine Displayliste ueber, faultet
+ * der Koprozessor; EVE_busy() setzt ihn dann per CPURESET zurueck - beim
+ * FT813 (EVE_GEN 2) OHNE den Patch-Pointer wiederherzustellen, anders als
+ * bei EVE_GEN > 2. Der GT911-Patch ist danach weg und der Touch tot. */
+#define FT813_RAM_DL_SIZE 8192u
+
+static uint32_t eve_dl_last;
+static uint32_t eve_dl_max;
+static uint32_t eve_fault_count;
 
 /* Der SPI-Bus wird von der LVGL-Schleife (Main) und von den eve-Shell-
  * Kommandos genutzt. DRAW_EVE haelt CS ueber ganze Transaktionen hinweg,
@@ -365,6 +377,42 @@ canboss_eve_display_get(void)
 	return eve_disp;
 }
 
+uint32_t
+canboss_eve_timer_handler(void)
+{
+	canboss_eve_lock();
+
+	uint32_t sleep_ms = lv_timer_handler();
+
+	/* REG_CMD_DL haelt die Groesse der letzten Displayliste, bis das
+	 * naechste CMD_DLSTART sie auf 0 setzt - also die Fuellhoehe des
+	 * gerade gebauten Frames. */
+	eve_dl_last = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_CMD_DL);
+	if (eve_dl_last > eve_dl_max) {
+		eve_dl_max = eve_dl_last;
+	}
+
+	if (EVE_get_and_reset_fault_state() == EVE_FAULT_RECOVERED) {
+		eve_fault_count++;
+
+		/* CPURESET hat die Touch-Register mitgenommen. Der GT911-Patch
+		 * selbst laesst sich nur durch ein komplettes EVE_init()
+		 * zurueckholen - hier bleibt es beim Wiederherstellen der
+		 * Betriebsart, damit der Zustand klar ist. */
+		lv_draw_eve_memwrite8(eve_disp, LV_EVE_REG_CTOUCH_EXTENDED, 1);
+		lv_draw_eve_memwrite8(eve_disp, LV_EVE_REG_TOUCH_MODE, 3);
+
+		if (eve_fault_count <= 3u) {
+			LOG_ERR("Koprozessor-Fault #%u, Displayliste %u/%u Bytes - "
+				"Screen zu komplex fuer RAM_DL; Touch braucht Neustart",
+				eve_fault_count, eve_dl_last, FT813_RAM_DL_SIZE);
+		}
+	}
+
+	canboss_eve_unlock();
+	return sleep_ms;
+}
+
 #ifdef CONFIG_SHELL
 
 static int
@@ -418,12 +466,25 @@ cmd_eve_status(const struct shell *sh, size_t argc, char **argv)
 		    (space & 3u) != 0u ? "Koprozessor-Fehler!" : (space == 0xffcu ? "idle" : "busy"));
 	shell_print(sh, "REG_PWM_DUTY : %u (Backlight)", pwm);
 	shell_print(sh, "REG_CPURESET : %u %s", cpureset, cpureset == 0u ? "(laeuft)" : "(im Reset!)");
+	/* Bit 15 waehlt die Touch-Engine: 0 = kapazitiv (FT811/813-Default
+	 * 0x0381), 1 = resistiv (FT810/812-Default 0x8381). */
 	shell_print(sh, "TOUCH_CONFIG : 0x%04x %s", tcfg,
-		    tcfg == 0x8381u ? "kapazitiv nativ (gen4 ok)"
+		    tcfg == 0x0381u ? "kapazitiv nativ (gen4 ok)"
 				    : (tcfg == 0x05d0u ? "GT911-Patch - FALSCH fuer gen4!"
 						       : "unerwarteter Wert"));
 	shell_print(sh, "CTOUCH_EXT   : %u %s", ext, ext == 1u ? "(compat/1 Punkt)" : "(extended)");
 	shell_print(sh, "TOUCH_MODE   : %u %s", tmode, tmode == 3u ? "(continuous)" : "");
+
+	shell_print(sh, "Displayliste : %u Bytes, max %u von %u (%u%%)", eve_dl_last, eve_dl_max,
+		    FT813_RAM_DL_SIZE, (eve_dl_max * 100u) / FT813_RAM_DL_SIZE);
+	if (eve_dl_max >= FT813_RAM_DL_SIZE - 512u) {
+		shell_print(sh, "               RAM_DL fast voll -> Screen vereinfachen");
+	}
+	shell_print(sh, "Koprozessor  : %u Faults%s", eve_fault_count,
+		    eve_fault_count != 0u ? " -> Displaylisten-Ueberlauf, Touch nach Fault tot" : "");
+	shell_print(sh, "RAM_G        : %u KiB von 1024 belegt, %u Eintraege (wird nie freigegeben)",
+		    lv_draw_eve_unit_g->ramg.ramg_addr_end / 1024u,
+		    lv_draw_eve_unit_g->ramg.hash_table_cells_occupied);
 	return 0;
 }
 

@@ -32,6 +32,14 @@ lv_display_t *canboss_eve_display_get(void);
 void canboss_eve_lock(void);
 void canboss_eve_unlock(void);
 
+/**
+ * lv_timer_handler() unter dem Bus-Lock, plus Mitschrift der
+ * Displaylisten-Groesse und der Koprozessor-Faults ('eve status').
+ *
+ * @return Wartezeit in ms wie von lv_timer_handler()
+ */
+uint32_t canboss_eve_timer_handler(void);
+
 #ifdef __cplusplus
 }
 #endif

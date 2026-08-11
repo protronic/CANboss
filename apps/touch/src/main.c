@@ -186,9 +186,7 @@ main(void) {
 
     for (;;) {
 #ifdef CONFIG_CANBOSSTOUCH_DRAW_EVE
-        canboss_eve_lock();
-        uint32_t sleep_ms = lv_timer_handler();
-        canboss_eve_unlock();
+        uint32_t sleep_ms = canboss_eve_timer_handler();
 #else
         uint32_t sleep_ms = lv_timer_handler();
 #endif
