@@ -3,7 +3,7 @@
  *
  * Terminal-I/O fuer Zephyr: die UART-Konsole (chosen zephyr,console)
  * im Poll-Betrieb. Auf native_sim liegt sie mit
- * CONFIG_NATIVE_UART_0_ON_STDINOUT direkt auf stdin/stdout des
+ * CONFIG_UART_NATIVE_PTY_0_ON_STDINOUT direkt auf stdin/stdout des
  * Host-Prozesses; auf Hardware ist die UART ohnehin "raw".
  *
  * Die Terminalgroesse ist nicht abfragbar und kommt aus
@@ -33,8 +33,8 @@ static const struct device* const tui_uart = DEVICE_DT_GET(DT_CHOSEN(zephyr_cons
 
 #ifdef CONFIG_NATIVE_LIBC
 /* Der native UART-Treiber setzt nur sein eigenes PTY in den Raw-Mode
- * (NATIVE_UART_0_ON_OWN_PTY); liegt die Konsole per
- * NATIVE_UART_0_ON_STDINOUT auf stdin/stdout, buffert das
+ * (UART_NATIVE_PTY_0_ON_OWN_PTY); liegt die Konsole per
+ * UART_NATIVE_PTY_0_ON_STDINOUT auf stdin/stdout, buffert das
  * Host-Terminal sonst zeilenweise und echot die Eingabe. */
 static struct termios tui_saved_termios;
 static bool tui_raw_active;

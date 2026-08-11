@@ -31,7 +31,7 @@ Alle Apps teilen sich:
 ## Workspace einrichten
 
 ```bash
-pip3 install west
+pip3 install west          # oder: pacman -S python-west / paru -S python-west
 mkdir canboss-workspace && cd canboss-workspace
 west init -m https://github.com/protronic/CANboss
 west update
@@ -47,10 +47,24 @@ west init -l CANboss && west update
 git -C CANboss submodule update --init
 ```
 
+### Python-Abhaengigkeiten (Zephyr 4.4)
+
+Zephyr braucht u.a. `jsonschema`. Unter Arch/CachyOS (PEP 668):
+
+```bash
+sudo pacman -S --needed python-jsonschema python-pyelftools python-pykwalify
+# alternativ Workspace-venv (west nutzt dann WEST_PYTHON):
+python -m venv .venv
+.venv/bin/pip install -r zephyr/scripts/requirements-base.txt west
+export WEST_PYTHON=$PWD/.venv/bin/python
+```
+
 ## Bauen
 
-Alle native_sim-Builds laufen mit dem Host-gcc (kein Zephyr-SDK
-noetig); fuer das Touch-Panel-Fenster wird `libsdl2-dev` gebraucht:
+### native_sim (Host-gcc, kein SDK)
+
+Fuer das Touch-Panel-Fenster braucht der Host SDL2
+(`sdl2` unter Arch, `libsdl2-dev` unter Debian/Ubuntu):
 
 ```bash
 export ZEPHYR_TOOLCHAIN_VARIANT=host
@@ -62,9 +76,35 @@ west build -b native_sim/native/64 CANboss/apps/nodes/demo_drive -d build-drive
 west build -b native_sim/native/64 CANboss/apps/nodes/demo_sensor -d build-sensor
 ```
 
-Hardware (STM32H573I-DK mit gen4-FT813-Panel) und der reine
-POSIX-Build des Monitors: siehe [apps/touch/README-zephyr.md](apps/touch/README-zephyr.md)
-bzw. [apps/monitor/README.md](apps/monitor/README.md).
+### Hardware (STM32H573I-DK)
+
+Ab Zephyr **4.4** braucht das Hardware-Target das Zephyr-SDK **1.0**
+(aeltere SDKs 0.16/0.17 sind inkompatibel). Unter Arch/CachyOS:
+
+```bash
+paru -S zephyr-sdk                 # installiert nach /opt/zephyr-sdk
+export ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk
+unset ZEPHYR_TOOLCHAIN_VARIANT     # Default = zephyr/gnu aus dem SDK
+
+west build -b stm32h573i_dk CANboss/apps/touch -d build
+# Arch-Paket legt nur stm32_programmer_cli (klein) in PATH; Zephyr
+# erwartet STM32_Programmer_CLI — deshalb das SDK-bin-Verzeichnis vorne:
+export PATH=/opt/stm32cubeprog/bin:$PATH
+west flash
+# oder einmalig: west flash --cli=/opt/stm32cubeprog/bin/STM32_Programmer_CLI
+```
+
+Ohne SDK (System-Crosscompiler):
+
+```bash
+# Arch: arm-none-eabi-gcc (+ optional paru -S arm-none-eabi-picolibc)
+ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb GNUARMEMB_TOOLCHAIN_PATH=/usr \
+  west build -b stm32h573i_dk CANboss/apps/touch -- -DTOOLCHAIN_HAS_PICOLIBC=ON
+```
+
+Details zum Board-Overlay, Flash und Berry: siehe
+[apps/touch/README-zephyr.md](apps/touch/README-zephyr.md).
+POSIX-Build des Monitors: [apps/monitor/README.md](apps/monitor/README.md).
 
 ### ODs zur Buildzeit aus den EDS-Dateien generieren
 
@@ -145,7 +185,7 @@ Hinweise:
 ## Projektlayout
 
 ```
-west.yml                west-Manifest (Zephyr v4.1.0, LVGL, STM32-HAL)
+west.yml                west-Manifest (Zephyr v4.4.2, LVGL, STM32-HAL)
 eds/                    network.json + EDS-Dateien (eine Quelle fuer alles)
 tools/                  eds2tui.py, eds2lvgl.py, poc2lvgl.py, get-edssharp.sh
 modules/                Submodule: CANopenNode (protronic-Fork), berry

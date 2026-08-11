@@ -89,12 +89,21 @@ den CAN-Controller, `zephyr,display` auf das Panel.
 
 ## Bauen und flashen (STM32H573I-DK)
 
+Zephyr **4.4+** braucht SDK **1.0** (Arch/CachyOS: AUR `zephyr-sdk`
+→ `/opt/zephyr-sdk`). Kurzfassung auch in der [Root-README](../../README.md):
+
 ```bash
 # mit dem Zephyr-SDK (empfohlen):
+export ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk   # Arch/CachyOS-AUR-Pfad
+unset ZEPHYR_TOOLCHAIN_VARIANT
 west build -b stm32h573i_dk CANboss/apps/touch
+# Arch: Zephyr sucht STM32_Programmer_CLI (Case-sensitiv); AUR-Paket
+# stellt nur stm32_programmer_cli bereit → PATH oder --cli setzen:
+export PATH=/opt/stm32cubeprog/bin:$PATH
 west flash
+# west flash --cli=/opt/stm32cubeprog/bin/STM32_Programmer_CLI
 
-# alternativ mit Ubuntu-Paketen (gcc-arm-none-eabi + picolibc-arm-none-eabi):
+# alternativ mit Distro-Paketen (arm-none-eabi-gcc + picolibc):
 ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb GNUARMEMB_TOOLCHAIN_PATH=/usr \
   west build -b stm32h573i_dk CANboss/apps/touch -- -DTOOLCHAIN_HAS_PICOLIBC=ON
 ```
