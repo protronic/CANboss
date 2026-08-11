@@ -450,7 +450,16 @@ canboss_eve_timer_handler(void)
 {
 	canboss_eve_lock();
 
+	/* Safety-Netz: Upstream-flush_cb (und aeltere Binaries) liessen den
+	 * CMD-Burst zwischen Frames offen. Touch-Reads in lv_timer_handler
+	 * duerfen nicht in eine offene CMDB-Transaktion greifen. */
+	EVE_end_cmd_burst();
+
 	uint32_t sleep_ms = lv_timer_handler();
+
+	/* Auch nach dem Frame: Burst zu, bevor Diagnose-Register gelesen
+	 * werden (und bevor der naechste Indev-Read kommt). */
+	EVE_end_cmd_burst();
 
 	/* REG_CMD_DL haelt die Groesse der letzten Displayliste, bis das
 	 * naechste CMD_DLSTART sie auf 0 setzt - also die Fuellhoehe des

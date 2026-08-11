@@ -55,9 +55,11 @@ target_sources(app PRIVATE
 
 # FT813-Display: Framebuffer-Treiber ODER DRAW_EVE-SPI-Glue
 if(CONFIG_CANBOSSTOUCH_DRAW_EVE)
+    # Lokale Kopie: Upstream-flush_cb laesst den CMD-Burst zwischen Frames
+    # offen (SPI-Korruption durch Touch-Reads) und wartet ohne Timeout.
     target_sources(app PRIVATE
         drivers/lv_draw_eve_zephyr.c
-        ${ZEPHYR_LVGL_MODULE_DIR}/src/drivers/draw/eve/lv_draw_eve_display.c
+        drivers/lv_draw_eve_display.c
     )
 elseif(CONFIG_SPI)
     # Legacy: dummer RGB565-Framebuffer in RAM_G (nicht fuer stm32h573i_dk)
