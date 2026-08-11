@@ -4,7 +4,9 @@
  * Zephyr-Port von LVGL DRAW_EVE fuer das gen4-FT813-70CTP-CLB:
  *  - op_cb steuert PD_N, CS_N und SPI (ohne Zephyr-Auto-CS)
  *  - Panel-Timings wie der fruehere Framebuffer-Treiber
- *  - Goodix-GT911-Patch (FTDI AN_336) + Touch ueber lv_draw_eve_touch
+ *  - Touch ueber die native kapazitive Engine des FT813 (kein
+ *    GT911-Patch!) mit eigenem Pointer-Indev: das gen4-Panel meldet
+ *    die Achsen transponiert zum FT81x-Default
  *
  * Das Zephyr-LVGL-Modul bindet parallel ein Dummy-Display (Chosen);
  * dieses Modul setzt das EVE-Display danach als Default.
@@ -26,6 +28,7 @@
 #include <zephyr/shell/shell.h>
 #endif
 
+#include <lvgl/lvgl.h>
 #include <lvgl/src/display/lv_display_private.h>
 #include <lvgl/src/drivers/draw/eve/lv_draw_eve_display.h>
 #include <lvgl/src/drivers/draw/eve/lv_draw_eve_display_defines.h>
@@ -128,6 +131,43 @@ eve_spi_err_report(const char *what, int err)
 	}
 }
 
+/* Touch-Lesen fuer den LVGL-Pointer-Indev. Ersetzt lv_draw_eve_touch_create():
+ * dieses gen4-Panel meldet REG_TOUCH_SCREEN_XY transponiert zum FT81x-Default,
+ * X liegt im Low-, Y im High-Halfword. LVGLs eingebauter Read-Callback wuerde
+ * X/Y vertauschen und jede Beruehrung mit (echtem) X > 479 als losgelassen
+ * werten. Nicht beruehrt = 0x8000-Sentinel in beiden Halbworten; ein
+ * gehaltener Finger liefert den Sentinel kurz auch mal nur in EINEM Feld -
+ * dann gedrueckt bleiben und die letzte gueltige Koordinate halten, sonst
+ * flackert der Zustand mitten in der Beruehrung. */
+static void
+eve_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+	static int32_t last_x, last_y;
+
+	ARG_UNUSED(indev);
+
+	uint32_t xy = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_TOUCH_SCREEN_XY);
+	int16_t x = (int16_t)(xy & 0xffffu);
+	int16_t y = (int16_t)(xy >> 16);
+
+	if (x == INT16_MIN && y == INT16_MIN) {
+		data->state = LV_INDEV_STATE_RELEASED;
+		data->point.x = last_x;
+		data->point.y = last_y;
+		return;
+	}
+
+	if (x != INT16_MIN) {
+		last_x = CLAMP(x, 0, lv_display_get_horizontal_resolution(eve_disp) - 1);
+	}
+	if (y != INT16_MIN) {
+		last_y = CLAMP(y, 0, lv_display_get_vertical_resolution(eve_disp) - 1);
+	}
+	data->state = LV_INDEV_STATE_PRESSED;
+	data->point.x = last_x;
+	data->point.y = last_y;
+}
+
 static void
 eve_op_cb(lv_display_t *disp, lv_draw_eve_operation_t operation, void *data, uint32_t length)
 {
@@ -228,10 +268,15 @@ canboss_eve_display_init(void)
 		.cspread = CSPREAD,
 		.pclk = PCLK_DIV,
 		.has_crystal = false, /* gen4: interner Oszillator */
-		/* gen4-FT813-70CTP-CLB: Goodix GT911. Bei EVE2 laedt
-		 * EVE_init() damit den FTDI-AN_336-Patch und setzt
-		 * REG_TOUCH_CONFIG auf 0x05D0 (I2C-Adresse 0x5D). */
-		.has_gt911 = true,
+		/* gen4-FT813-70CTP-CLB: Touch laeuft ueber die NATIVE
+		 * kapazitive Engine des FT813 (REG_TOUCH_CONFIG-Default
+		 * 0x8381), wie im lauffaehigen embassy-Port. has_gt911
+		 * wuerde den FTDI-AN_336-Patch laden, REG_TOUCH_CONFIG auf
+		 * 0x05D0 (Goodix, I2C 0x5D) umstellen und REG_GPIOX_DIR
+		 * blind ueberschreiben - auf dem gen4 haengt die Reset-/
+		 * INT-Leitung des Touch-Controllers an GPIO0..3, der Touch
+		 * waere danach dauerhaft tot. */
+		.has_gt911 = false,
 		.backlight_pwm = DT_PROP(FT813_NODE, backlight_duty),
 		.backlight_freq = 250,
 	};
@@ -273,12 +318,20 @@ canboss_eve_display_init(void)
 		       eve_ctx.bus.config.frequency, id_fast, FT813_SLOW_HZ);
 	}
 
-	/* Der GT911-Patch wurde bereits in EVE_init() geladen. Fuer LVGLs
-	 * Single-Pointer-Indev Kompatibilitaetsmodus + Continuous aktivieren. */
+	/* Kapazitive Engine: Kompatibilitaetsmodus (1 Punkt) + Continuous -
+	 * dieselbe Konfiguration wie der lauffaehige embassy-Port. */
 	lv_draw_eve_memwrite8(eve_disp, LV_EVE_REG_CTOUCH_EXTENDED, 1);
 	lv_draw_eve_memwrite8(eve_disp, LV_EVE_REG_TOUCH_MODE, 3);
 
-	(void)lv_draw_eve_touch_create(eve_disp);
+	/* Eigener Pointer-Indev statt lv_draw_eve_touch_create()
+	 * (Achsen-Transposition, siehe eve_touch_read_cb) */
+	lv_indev_t *touch_indev = lv_indev_create();
+
+	if (touch_indev != NULL) {
+		lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
+		lv_indev_set_display(touch_indev, eve_disp);
+		lv_indev_set_read_cb(touch_indev, eve_touch_read_cb);
+	}
 	lv_display_set_default(eve_disp);
 
 	/* Das Zephyr-LVGL-Modul legt fuer zephyr,display zwangsweise ein
@@ -366,7 +419,9 @@ cmd_eve_status(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "REG_PWM_DUTY : %u (Backlight)", pwm);
 	shell_print(sh, "REG_CPURESET : %u %s", cpureset, cpureset == 0u ? "(laeuft)" : "(im Reset!)");
 	shell_print(sh, "TOUCH_CONFIG : 0x%04x %s", tcfg,
-		    tcfg == 0x05d0u ? "GT911 (I2C 0x5d)" : "kein GT911-Profil");
+		    tcfg == 0x8381u ? "kapazitiv nativ (gen4 ok)"
+				    : (tcfg == 0x05d0u ? "GT911-Patch - FALSCH fuer gen4!"
+						       : "unerwarteter Wert"));
 	shell_print(sh, "CTOUCH_EXT   : %u %s", ext, ext == 1u ? "(compat/1 Punkt)" : "(extended)");
 	shell_print(sh, "TOUCH_MODE   : %u %s", tmode, tmode == 3u ? "(continuous)" : "");
 	return 0;
@@ -400,8 +455,9 @@ cmd_eve_touch(const struct shell *sh, size_t argc, char **argv)
 		canboss_eve_unlock();
 
 		if (xy != last_xy) {
-			int16_t x = (int16_t)(xy >> 16);
-			int16_t y = (int16_t)(xy & 0xffffu);
+			/* gen4: Achsen transponiert - X im Low-, Y im High-Halfword */
+			int16_t x = (int16_t)(xy & 0xffffu);
+			int16_t y = (int16_t)(xy >> 16);
 
 			if (xy == 0x80008000u) {
 				shell_print(sh, "  losgelassen");

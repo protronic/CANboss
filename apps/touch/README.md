@@ -190,8 +190,14 @@ direkt als EVE-Displaylisten (kein MCU-Framebuffer):
 
 - `drivers/lv_draw_eve_zephyr.c`: SPI/GPIO-`op_cb` am DT-Knoten
   `protronic,ft813` (PD_N, manuelles CS, Bring-up 8 MHz → Betrieb
-  15,6 MHz), Panel-Timings gen4-FT813-70 (WVGA), Touch über
-  `lv_draw_eve_touch_create` (CTOUCH-Kompatibilitätsmodus)
+  15,6 MHz), Panel-Timings gen4-FT813-70 (WVGA)
+- **Touch**: native kapazitive Engine des FT813
+  (CTOUCH-Kompatibilitätsmodus, `REG_TOUCH_CONFIG`-Default `0x8381`,
+  **kein** GT911/AN_336-Patch — der würde auf dem gen4 den
+  Touch-Controller killen) mit eigenem LVGL-Pointer-Indev: dieses
+  Panel meldet `REG_TOUCH_SCREEN_XY` **transponiert** zum
+  FT81x-Default (X im Low-, Y im High-Halfword), Diagnose per
+  Shell: `eve status`, `eve touch`
 - Zephyr-Chosen `zephyr,display` ist ein `zephyr,dummy-dc` (das
   LVGL-Modul braucht ein Chosen); die UI nutzt das EVE-Display als
   Default (`CONFIG_CANBOSSTOUCH_DRAW_EVE`)

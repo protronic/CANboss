@@ -22,7 +22,8 @@ ueber das Shell-Kommando `berry`.
   boards/native_sim.*   SDL-Display 800x480, Shell auf stdin/stdout
   overlays/headless.*   Dummy-Display (CI/Container ohne SDL2)
   overlays/vcan.overlay CAN auf Host-SocketCAN statt Loopback
-  drivers/lv_draw_eve_zephyr.*  LVGL DRAW_EVE SPI/GPIO-Glue (FT813)
+  drivers/lv_draw_eve_zephyr.*  LVGL DRAW_EVE SPI/GPIO-Glue (FT813) +
+                        Touch-Indev (native CTSE, Achsen transponiert)
   drivers/ft813.c       Legacy-Framebuffer-Treiber (optional)
   port/                 CANopenNode-Port (CO_driver auf can_if/osal)
   berry/berry_conf.h    Berry-Konfiguration (ohne Dateisystem/OS-Modul)
