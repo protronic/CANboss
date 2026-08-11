@@ -278,7 +278,10 @@ canboss_eve_display_init(void)
 		 * waere danach dauerhaft tot. */
 		.has_gt911 = false,
 		.backlight_pwm = DT_PROP(FT813_NODE, backlight_duty),
-		.backlight_freq = 250,
+		/* 4 kHz wie der embassy-Port: 250 Hz moduliert den Backlight-
+		 * Boost niederfrequent - auf schwachem GND stoert genau diese
+		 * Stromwelligkeit die kapazitive Touch-Abtastung. */
+		.backlight_freq = 4000,
 	};
 
 	eve_disp = lv_draw_eve_display_create(&params, eve_op_cb, &eve_ctx);
