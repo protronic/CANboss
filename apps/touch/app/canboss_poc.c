@@ -223,61 +223,66 @@ poc_screen_delete_cb(lv_event_t* e) {
 /* Screen-Aufbau                                                        */
 /* ------------------------------------------------------------------ */
 
-static lv_obj_t*
-poc_make_column(lv_obj_t* parent, const char* eyebrow, const char* title, bool group) {
-    lv_obj_t* card = lv_obj_create(parent);
-    lv_obj_set_size(card, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_grow(card, 1);
-    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(card, 8, 0);
-    lv_obj_set_style_pad_row(card, 6, 0);
-    /* DRAW_EVE: Border+Radius kosten ~25 DL-Worte je Objekt. 5 Cards +
-     * 15 Buttons sprengen sonst die 8-KiB-RAM_DL (Screen „haengt“, keine
-     * LVGL-OOM-Meldung). Flach zeichnen, Trennung ueber Hintergrundfarbe. */
-    lv_obj_set_style_radius(card, 0, 0);
-    lv_obj_set_style_bg_color(card, lv_color_hex(group ? POC_CARD_BG_GROUP : POC_CARD_BG), 0);
-    lv_obj_set_style_border_width(card, 0, 0);
-    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+static lv_obj_t *
+poc_make_column(lv_obj_t *parent, const char *eyebrow, const char *title, bool group)
+{
+	lv_obj_t *card = lv_obj_create(parent);
+	lv_obj_t *title_lbl;
 
-    lv_obj_t* eyebrow_lbl = lv_label_create(card);
-    lv_label_set_text(eyebrow_lbl, eyebrow);
-    lv_obj_set_style_text_color(eyebrow_lbl, lv_color_hex(POC_ACCENT), 0);
-    lv_obj_set_style_text_letter_space(eyebrow_lbl, 2, 0);
+	lv_obj_set_size(card, LV_PCT(100), LV_PCT(100));
+	lv_obj_set_flex_grow(card, 1);
+	lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+	lv_obj_set_style_pad_all(card, 8, 0);
+	lv_obj_set_style_pad_row(card, 6, 0);
+	/* DRAW_EVE: Border+Radius kosten ~25 DL-Worte je Objekt. 5 Cards +
+	 * 15 Buttons sprengen sonst die 8-KiB-RAM_DL. Flach zeichnen. */
+	lv_obj_set_style_radius(card, 0, 0);
+	lv_obj_set_style_bg_color(card, lv_color_hex(group ? POC_CARD_BG_GROUP : POC_CARD_BG),
+				 0);
+	lv_obj_set_style_border_width(card, 0, 0);
+	lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* title_lbl = lv_label_create(card);
-    lv_label_set_text(title_lbl, title);
-    lv_obj_set_style_text_color(title_lbl, lv_color_hex(POC_TEXT), 0);
-    lv_obj_set_style_text_font(title_lbl, &lv_font_montserrat_20, 0);
+	ARG_UNUSED(eyebrow);
 
-    return card;
+	title_lbl = lv_label_create(card);
+	if (title_lbl != NULL) {
+		lv_label_set_text(title_lbl, title);
+		lv_obj_set_style_text_color(title_lbl, lv_color_hex(POC_TEXT), 0);
+		lv_obj_set_style_text_font(title_lbl, &lv_font_montserrat_20, 0);
+	}
+
+	return card;
 }
 
 static void
-poc_make_button(lv_obj_t* card, uint32_t index) {
-    lv_obj_t* btn = lv_button_create(card);
-    lv_obj_set_size(btn, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_grow(btn, 1);
-    lv_obj_set_style_radius(btn, 0, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(POC_BUTTON_BG), 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(POC_BUTTON_PRESSED), LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(btn, 0, 0);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
-    /* Theme-Focus-Outline wuerde wieder teure Border-Primitives kosten */
-    lv_obj_set_style_outline_width(btn, 0, 0);
-    lv_obj_set_style_outline_width(btn, 0, LV_STATE_FOCUS_KEY);
+poc_make_button(lv_obj_t *card, uint32_t index)
+{
+	lv_obj_t *btn = lv_button_create(card);
+	lv_obj_t *lbl;
 
-    lv_obj_t* lbl = lv_label_create(btn);
-    lv_label_set_text(lbl, canboss_poc_button_labels[index]);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(POC_TEXT), 0);
-    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(lbl);
+	lv_obj_set_size(btn, LV_PCT(100), LV_PCT(100));
+	lv_obj_set_flex_grow(btn, 1);
+	lv_obj_set_style_radius(btn, 0, 0);
+	lv_obj_set_style_bg_color(btn, lv_color_hex(POC_BUTTON_BG), 0);
+	lv_obj_set_style_bg_color(btn, lv_color_hex(POC_BUTTON_PRESSED), LV_STATE_PRESSED);
+	lv_obj_set_style_border_width(btn, 0, 0);
+	lv_obj_set_style_shadow_width(btn, 0, 0);
+	/* Theme-Focus-Outline wuerde wieder teure Border-Primitives kosten */
+	lv_obj_set_style_outline_width(btn, 0, 0);
+	lv_obj_set_style_outline_width(btn, 0, LV_STATE_FOCUS_KEY);
 
-    lv_obj_add_event_cb(btn, poc_button_event_cb, LV_EVENT_PRESSED, (void*)(intptr_t)index);
-    lv_obj_add_event_cb(btn, poc_button_event_cb, LV_EVENT_RELEASED, (void*)(intptr_t)index);
-    lv_obj_add_event_cb(btn, poc_button_event_cb, LV_EVENT_PRESS_LOST, (void*)(intptr_t)index);
+	lbl = lv_label_create(btn);
+	lv_label_set_text(lbl, canboss_poc_button_labels[index]);
+	lv_obj_set_style_text_color(lbl, lv_color_hex(POC_TEXT), 0);
+	lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+	lv_obj_center(lbl);
 
-    poc_buttons[index] = btn;
-    poc_highlight[index] = false;
+	lv_obj_add_event_cb(btn, poc_button_event_cb, LV_EVENT_PRESSED, (void *)(intptr_t)index);
+	lv_obj_add_event_cb(btn, poc_button_event_cb, LV_EVENT_RELEASED, (void *)(intptr_t)index);
+	lv_obj_add_event_cb(btn, poc_button_event_cb, LV_EVENT_PRESS_LOST, (void *)(intptr_t)index);
+
+	poc_buttons[index] = btn;
+	poc_highlight[index] = false;
 }
 
 void
@@ -310,39 +315,46 @@ canboss_poc_screen_create(void) {
     lv_obj_set_style_bg_color(header, lv_color_hex(POC_SURFACE), 0);
     lv_obj_remove_flag(header, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* back = lv_button_create(header);
-    lv_obj_t* back_lbl = lv_label_create(back);
-    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT " Netzwerk");
-    lv_obj_add_event_cb(back, poc_back_clicked, LV_EVENT_CLICKED, NULL);
+	lv_obj_t *back = lv_button_create(header);
+	lv_obj_t *back_lbl = lv_label_create(back);
 
-    lv_obj_t* title = lv_label_create(header);
-    lv_label_set_text_fmt(title, "%s - %s", canboss_poc_page_title, canboss_poc_hall_name);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_set_flex_grow(title, 1);
-    lv_obj_set_style_pad_left(title, 12, 0);
+	lv_label_set_text(back_lbl, LV_SYMBOL_LEFT " Netzwerk");
+	lv_obj_add_event_cb(back, poc_back_clicked, LV_EVENT_CLICKED, NULL);
 
-    /* 5-Spalten-Bereich: ein Card-Container je Feld + Zentral-Gruppe */
-    lv_obj_t* cols = lv_obj_create(scr);
-    lv_obj_set_size(cols, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_grow(cols, 1);
-    lv_obj_set_flex_flow(cols, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_all(cols, 10, 0);
-    lv_obj_set_style_pad_column(cols, 8, 0);
-    lv_obj_set_style_bg_color(cols, lv_color_hex(POC_SCREEN_BG), 0);
-    lv_obj_set_style_border_width(cols, 0, 0);
-    lv_obj_set_style_radius(cols, 0, 0);
-    lv_obj_remove_flag(cols, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_t *title = lv_label_create(header);
 
-    for (uint32_t f = 0; f < CANBOSS_POC_FIELD_COUNT; f++) {
-        lv_obj_t* card = poc_make_column(cols, canboss_poc_fields[f].eyebrow, canboss_poc_fields[f].title, false);
-        for (uint32_t j = 0; j < 3; j++) {
-            poc_make_button(card, f * 3u + j);
-        }
-    }
-    lv_obj_t* group = poc_make_column(cols, "ZENTRAL", "Alle Felder", true);
-    for (uint32_t j = 0; j < 3; j++) {
-        poc_make_button(group, CANBOSS_POC_GROUP_BASE + j);
-    }
+	lv_label_set_text_fmt(title, "%s - %s", canboss_poc_page_title, canboss_poc_hall_name);
+	lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+	lv_obj_set_flex_grow(title, 1);
+	lv_obj_set_style_pad_left(title, 12, 0);
+
+	/* 5-Spalten-Bereich: ein Card-Container je Feld + Zentral-Gruppe */
+	lv_obj_t *cols = lv_obj_create(scr);
+
+	lv_obj_set_size(cols, LV_PCT(100), LV_PCT(100));
+	lv_obj_set_flex_grow(cols, 1);
+	lv_obj_set_flex_flow(cols, LV_FLEX_FLOW_ROW);
+	lv_obj_set_style_pad_all(cols, 10, 0);
+	lv_obj_set_style_pad_column(cols, 8, 0);
+	lv_obj_set_style_bg_color(cols, lv_color_hex(POC_SCREEN_BG), 0);
+	lv_obj_set_style_border_width(cols, 0, 0);
+	lv_obj_set_style_radius(cols, 0, 0);
+	lv_obj_remove_flag(cols, LV_OBJ_FLAG_SCROLLABLE);
+
+	for (uint32_t f = 0; f < CANBOSS_POC_FIELD_COUNT; f++) {
+		lv_obj_t *card = poc_make_column(cols, canboss_poc_fields[f].eyebrow,
+						 canboss_poc_fields[f].title, false);
+
+		for (uint32_t j = 0; j < 3; j++) {
+			poc_make_button(card, f * 3u + j);
+		}
+	}
+
+	lv_obj_t *group = poc_make_column(cols, "ZENTRAL", "Alle Felder", true);
+
+	for (uint32_t j = 0; j < 3; j++) {
+		poc_make_button(group, CANBOSS_POC_GROUP_BASE + j);
+	}
 
     if (poc_timer == NULL) {
         poc_timer = lv_timer_create(poc_timer_cb, CANBOSS_POC_REPEAT_MS, NULL);

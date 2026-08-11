@@ -223,7 +223,17 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_m
          * zum naechsten Frame asserted; jeder Touch-memRead dazwischen
          * zerstört die SPI-Transaktion. */
         uint32_t t0 = lv_tick_get();
-        while(EVE_busy() != E_OK) {
+        for(;;) {
+            uint8_t st = EVE_busy();
+
+            if(st == E_OK) {
+                break;
+            }
+            /* Fault-Recovery hat den Koprozessor schon zurueckgesetzt -
+             * weiteres Warten/Resetten bringt nichts und kostet 10 ms/Runde. */
+            if(st == EVE_FAULT_RECOVERED) {
+                break;
+            }
             if(lv_tick_elaps(t0) > 100U) {
                 break;
             }

@@ -103,6 +103,16 @@ canboss_eve_unlock(void)
 	(void)k_mutex_unlock(&eve_bus_lock);
 }
 
+/* Von EVE_commands.c (weak Hook) waehrend FIFO-Wartezeiten aufgerufen.
+ * Burst ist geschlossen - Shell kann 'eve status' dazwischen bekommen. */
+void
+EVE_cmdb_wait_yield(void)
+{
+	canboss_eve_unlock();
+	k_msleep(1);
+	canboss_eve_lock();
+}
+
 static void
 eve_spi_set_hz(uint32_t hz)
 {
@@ -448,14 +458,19 @@ canboss_eve_display_get(void)
 uint32_t
 canboss_eve_timer_handler(void)
 {
+	int64_t t0;
+	uint32_t sleep_ms;
+	int64_t elapsed;
+
 	canboss_eve_lock();
+	t0 = k_uptime_get();
 
 	/* Safety-Netz: Upstream-flush_cb (und aeltere Binaries) liessen den
 	 * CMD-Burst zwischen Frames offen. Touch-Reads in lv_timer_handler
 	 * duerfen nicht in eine offene CMDB-Transaktion greifen. */
 	EVE_end_cmd_burst();
 
-	uint32_t sleep_ms = lv_timer_handler();
+	sleep_ms = lv_timer_handler();
 
 	/* Auch nach dem Frame: Burst zu, bevor Diagnose-Register gelesen
 	 * werden (und bevor der naechste Indev-Read kommt). */
@@ -490,6 +505,12 @@ canboss_eve_timer_handler(void)
 		}
 	}
 
+	elapsed = k_uptime_get() - t0;
+	if (elapsed >= 200) {
+		printk("EVE: lv_timer_handler dauerte %lld ms (DL %u/%u, faults %u)\n",
+		       elapsed, eve_dl_last, FT813_RAM_DL_SIZE, eve_fault_count);
+	}
+
 	canboss_eve_unlock();
 	return sleep_ms;
 }
@@ -506,6 +527,20 @@ eve_shell_ready(const struct shell *sh)
 	return 0;
 }
 
+/* Shell darf den UI-Thread nicht ewig blockieren: haengt Main in
+ * lv_timer_handler/EVE_execute_cmd, bleibt der Mutex sonst fuer immer weg
+ * und 'eve status' wirkt tot. */
+static int
+eve_shell_lock(const struct shell *sh)
+{
+	if (k_mutex_lock(&eve_bus_lock, K_MSEC(800)) != 0) {
+		shell_error(sh, "EVE-Bus belegt (>800 ms) - UI haengt in LVGL/SPI "
+				"(oft CMDB/Displaylisten-Ueberlauf)");
+		return -EBUSY;
+	}
+	return 0;
+}
+
 static int
 cmd_eve_status(const struct shell *sh, size_t argc, char **argv)
 {
@@ -516,7 +551,9 @@ cmd_eve_status(const struct shell *sh, size_t argc, char **argv)
 		return -ENODEV;
 	}
 
-	canboss_eve_lock();
+	if (eve_shell_lock(sh) != 0) {
+		return -EBUSY;
+	}
 	uint8_t id = lv_draw_eve_memread8(eve_disp, LV_EVE_REG_ID);
 	uint32_t clock0 = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_CLOCK);
 	uint32_t frames0 = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_FRAMES);
@@ -530,7 +567,9 @@ cmd_eve_status(const struct shell *sh, size_t argc, char **argv)
 
 	k_msleep(100);
 
-	canboss_eve_lock();
+	if (eve_shell_lock(sh) != 0) {
+		return -EBUSY;
+	}
 	uint32_t clock1 = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_CLOCK);
 	uint32_t frames1 = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_FRAMES);
 	canboss_eve_unlock();
@@ -604,7 +643,9 @@ cmd_eve_touch(const struct shell *sh, size_t argc, char **argv)
 	int64_t deadline = k_uptime_get() + (int64_t)secs * 1000;
 
 	while (k_uptime_get() < deadline) {
-		canboss_eve_lock();
+		if (eve_shell_lock(sh) != 0) {
+			return -EBUSY;
+		}
 		uint32_t xy = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_TOUCH_SCREEN_XY);
 		uint32_t raw = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_TOUCH_RAW_XY);
 		uint8_t tag = lv_draw_eve_memread8(eve_disp, LV_EVE_REG_TOUCH_TAG);
@@ -647,7 +688,9 @@ cmd_eve_reg(const struct shell *sh, size_t argc, char **argv)
 	uint32_t width = (argc > 2) ? (uint32_t)strtoul(argv[2], NULL, 10) : 8u;
 	uint32_t val;
 
-	canboss_eve_lock();
+	if (eve_shell_lock(sh) != 0) {
+		return -EBUSY;
+	}
 	switch (width) {
 	case 8:
 		val = lv_draw_eve_memread8(eve_disp, addr);
@@ -685,7 +728,9 @@ cmd_eve_pwm(const struct shell *sh, size_t argc, char **argv)
 		return -EINVAL;
 	}
 
-	canboss_eve_lock();
+	if (eve_shell_lock(sh) != 0) {
+		return -EBUSY;
+	}
 	lv_draw_eve_memwrite8(eve_disp, LV_EVE_REG_PWM_DUTY, (uint8_t)duty);
 	canboss_eve_unlock();
 
@@ -703,7 +748,9 @@ cmd_eve_lvgl(const struct shell *sh, size_t argc, char **argv)
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
 
-	canboss_eve_lock();
+	if (eve_shell_lock(sh) != 0) {
+		return -EBUSY;
+	}
 	lv_display_t *def = lv_display_get_default();
 	unsigned int idx = 0;
 
@@ -736,7 +783,9 @@ cmd_eve_redraw(const struct shell *sh, size_t argc, char **argv)
 		return -ENODEV;
 	}
 
-	canboss_eve_lock();
+	if (eve_shell_lock(sh) != 0) {
+		return -EBUSY;
+	}
 	uint32_t wr0 = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_CMD_WRITE);
 	lv_obj_t *scr = lv_display_get_screen_active(eve_disp);
 
@@ -748,7 +797,9 @@ cmd_eve_redraw(const struct shell *sh, size_t argc, char **argv)
 	/* die Main-Schleife rendern lassen */
 	k_msleep(300);
 
-	canboss_eve_lock();
+	if (eve_shell_lock(sh) != 0) {
+		return -EBUSY;
+	}
 	uint32_t wr1 = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_CMD_WRITE);
 	canboss_eve_unlock();
 
