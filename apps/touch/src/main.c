@@ -4,7 +4,8 @@
  * Einstieg der CANbossTouch-Zephyr-App (Port des STM32-Builds):
  *
  *  - LVGL initialisiert das Zephyr-Modul selbst (SYS_INIT, Display aus
- *    dem Devicetree: SDL-Fenster auf native_sim, Panel auf Hardware)
+ *    dem Devicetree: SDL-Fenster auf native_sim; auf STM32 ein Dummy
+ *    als Chosen + DRAW_EVE fuer den FT813)
  *  - CANopenNode-Stack (Node 127, lib/od/canboss_master) ueber lib/canopen
  *  - SDO-Worker fuer die UI-Datenpunkte (canboss_sdo_zephyr.c)
  *  - EDS-generierte LVGL-Screens (App/canboss_ui.c + App/generated/)
@@ -28,6 +29,10 @@
 #include "canboss_ui.h"
 #include "co_node.h"
 #include "canboss_master.h" /* nach co_node.h (CANopenNode-Typen) */
+
+#ifdef CONFIG_CANBOSSTOUCH_DRAW_EVE
+#include "lv_draw_eve_zephyr.h"
+#endif
 
 #ifdef CONFIG_CANBOSSTOUCH_BERRY
 #include "canboss_berry.h"
@@ -154,10 +159,20 @@ main(void) {
         }
     }
 
+#ifdef CONFIG_CANBOSSTOUCH_DRAW_EVE
+    /* STM32: Chosen ist Dummy (Zephyr-LVGL-Zwang); echte UI ueber EVE-GPU */
+    if (canboss_eve_display_init() != 0) {
+        printf("Fehler: FT813 DRAW_EVE-Init fehlgeschlagen - UI startet nicht\n");
+        for (;;) {
+            k_msleep(1000);
+        }
+    }
+#else
     /* Display einschalten: der SDL-Treiber (native_sim) praesentiert
-     * erst nach blanking_off, am FT813 schaltet es das Backlight ein.
-     * (Das LVGL-Modul selbst ruft blanking_off nicht auf.) */
+     * erst nach blanking_off. (Das LVGL-Modul selbst ruft blanking_off
+     * nicht auf.) */
     (void)display_blanking_off(display);
+#endif
 
     canboss_ui_init();
 #ifdef CB_DEBUG_OPEN_NODE /* Testpfad: Monkey-Eingaben headless simulieren */

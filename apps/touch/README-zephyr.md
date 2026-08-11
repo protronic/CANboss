@@ -18,12 +18,12 @@ ueber das Shell-Kommando `berry`.
 
   CMakeLists.txt        Zephyr-App: App/-Quellen + CANopenNode + Berry
   prj.conf, Kconfig     Konfiguration (CONFIG_CANBOSSTOUCH_*)
-  boards/stm32h573i_dk.* FT813 an SPI2, FDCAN2 (PB5/PB6), RAM-Tuning
+  boards/stm32h573i_dk.* FT813 an SPI2 + DRAW_EVE, FDCAN2, RAM-Tuning
   boards/native_sim.*   SDL-Display 800x480, Shell auf stdin/stdout
   overlays/headless.*   Dummy-Display (CI/Container ohne SDL2)
   overlays/vcan.overlay CAN auf Host-SocketCAN statt Loopback
-  drivers/ft813.c       FT813-Displaytreiber + Touch-Input (DT-Binding
-                        dts/bindings/display/protronic,ft813.yaml)
+  drivers/lv_draw_eve_zephyr.*  LVGL DRAW_EVE SPI/GPIO-Glue (FT813)
+  drivers/ft813.c       Legacy-Framebuffer-Treiber (optional)
   port/                 CANopenNode-Port (CO_driver auf can_if/osal)
   berry/berry_conf.h    Berry-Konfiguration (ohne Dateisystem/OS-Modul)
   src/
@@ -111,10 +111,11 @@ ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb GNUARMEMB_TOOLCHAIN_PATH=/usr \
 Das Board-Overlay (`boards/stm32h573i_dk.overlay`) bindet das
 gen4-FT813-Modul am Arduino-Header an (SPI2 PI1/PI2/PB15, /CS PA3,
 PD PA8 — Verdrahtung siehe README im Repo-Root) und CANopen an FDCAN2
-(PB5/PB6, 500 kbit/s). Die Speicheraufteilung (LVGL-Puffer, Heaps,
-Stacks) ist in `boards/stm32h573i_dk.conf` auf die 256-KiB-SRAM1-Bank
-des H573 abgestimmt (~99 % belegt); Reserven liegen in SRAM2/SRAM3
-(z.B. LVGL-Puffer per `CONFIG_LV_Z_VDB_CUSTOM_SECTION` auslagern).
+(PB5/PB6, 500 kbit/s). Die UI laeuft ueber **LVGL DRAW_EVE**
+(`CONFIG_CANBOSSTOUCH_DRAW_EVE`); `zephyr,display` ist nur ein Dummy
+fuer das Zephyr-LVGL-Modul. Heaps/Stacks in
+`boards/stm32h573i_dk.conf` — ohne grossen RGB565-VDB deutlich
+entspannter als der fruehere Framebuffer-Pfad.
 
 ## Berry-Scripting (OD-/PDO-Zugriff)
 

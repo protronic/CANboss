@@ -53,14 +53,22 @@ target_sources(app PRIVATE
     ${CANOPEN_DIR}/301/crc16-ccitt.c
 )
 
-# FT813-Displaytreiber (Hardware-Targets mit SPI; DT-Binding unter
-# dts/bindings/display/protronic,ft813.yaml)
-target_sources_ifdef(CONFIG_SPI app PRIVATE drivers/ft813.c)
+# FT813-Display: Framebuffer-Treiber ODER DRAW_EVE-SPI-Glue
+if(CONFIG_CANBOSSTOUCH_DRAW_EVE)
+    target_sources(app PRIVATE
+        drivers/lv_draw_eve_zephyr.c
+        ${ZEPHYR_LVGL_MODULE_DIR}/src/drivers/draw/eve/lv_draw_eve_display.c
+    )
+elseif(CONFIG_SPI)
+    # Legacy: dummer RGB565-Framebuffer in RAM_G (nicht fuer stm32h573i_dk)
+    target_sources(app PRIVATE drivers/ft813.c)
+endif()
 
 target_include_directories(app PRIVATE
     src
     app
     app/generated
+    drivers
     ${CBLIB}/canopen
     ${CBLIB}/canopen/port
     ${CANOPEN_DIR}

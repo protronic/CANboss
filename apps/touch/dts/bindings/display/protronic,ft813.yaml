@@ -1,10 +1,8 @@
-# FTDI/Bridgetek FT813 (EVE2) als RGB565-Framebuffer-Display mit
-# kapazitivem Touch (gen4-FT813-70CTP-CLB). Treiber:
-# zephyr-app/drivers/ft813.c - der Host schreibt LVGL-Pixelstreifen in
-# das 1-MiB-RAM_G, eine statische Displayliste scannt die Bitmap aufs
-# Panel; Touch wird zyklisch gepollt und als Input-Events gemeldet.
+# FTDI/Bridgetek FT813 (EVE2) am SPI — DT-Knoten fuer Timings/GPIO.
+# Auf stm32h573i_dk steuert drivers/lv_draw_eve_zephyr.c den Chip
+# (LVGL DRAW_EVE). Legacy: drivers/ft813.c als dummer RGB565-Framebuffer.
 
-description: FT813 (EVE2) SPI display controller used as dumb RGB565 framebuffer
+description: FT813 (EVE2) SPI display (DRAW_EVE glue or legacy framebuffer)
 
 compatible: "protronic,ft813"
 
@@ -36,4 +34,6 @@ properties:
   touch-poll-ms:
     type: int
     default: 30
-    description: Abtastintervall der Touch-Engine in Millisekunden (0 = aus)
+    description: |
+      Nur Legacy-Framebuffer-Treiber: Abtastintervall der Touch-Engine
+      in Millisekunden (0 = aus). DRAW_EVE nutzt lv_draw_eve_touch.

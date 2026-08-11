@@ -4,26 +4,32 @@
  *
  *   SCK  = D13 = PI1  (SPI2_SCK)     MISO = D12 = PI2  (SPI2_MISO)
  *   MOSI = D11 = PB15 (SPI2_MOSI)    /CS  = D10 = PA3  (GPIO)
- *   PD   = D9  = PA8  (GPIO)         INT  = D8  = PG8  (unbenutzt, Touch gepollt)
+ *   PD   = D9  = PA8  (GPIO)         INT  = D8  = PG8  (unbenutzt)
  *   CAN  : RX = D3 = PB5 (FDCAN2_RX)  TX = D15 = PB6 (FDCAN2_TX)
+ *
+ * zephyr,display zeigt auf ein Dummy-Display (Zephyr-LVGL-Modul braucht
+ * ein Chosen); die echte UI laeuft ueber LVGL DRAW_EVE + SPI-Glue am
+ * ft813-Knoten. Touch kommt von lv_draw_eve_touch, nicht von
+ * zephyr,lvgl-pointer-input.
  */
 
 / {
 	chosen {
-		zephyr,display = &ft813;
+		zephyr,display = &dummy_dc;
 		zephyr,canbus = &fdcan2;
 	};
 
-	lvgl_pointer {
-		compatible = "zephyr,lvgl-pointer-input";
-		input = <&ft813>;
+	dummy_dc: dummy_dc {
+		compatible = "zephyr,dummy-dc";
+		width = <800>;
+		height = <480>;
 	};
 };
 
 &spi2 {
 	status = "okay";
-	/* /CS als GPIO statt Hardware-NSS: der FT813 braucht CS ueber
-	 * Header + Nutzdaten einer Transaktion durchgehend aktiv. */
+	/* /CS als GPIO: DRAW_EVE steuert CS manuell ueber mehrere
+	 * SPI-Bursts hinweg (Zephyr-Auto-CS waere zu kurz). */
 	pinctrl-0 = <&spi2_sck_pi1 &spi2_miso_pi2 &spi2_mosi_pb15>;
 	pinctrl-names = "default";
 	cs-gpios = <&gpioa 3 GPIO_ACTIVE_LOW>;
@@ -31,14 +37,14 @@
 	ft813: ft813@0 {
 		compatible = "protronic,ft813";
 		reg = <0>;
-		/* Bring-up laeuft treiberintern mit 8 MHz; Betrieb mit
-		 * 250 MHz Kerneltakt / 16 = 15.625 MHz (FT81x-Maximum 30 MHz) */
+		/* Bring-up im Glue mit 8 MHz; Betrieb danach mit
+		 * 250 MHz Kerneltakt / 16 = 15.625 MHz (FT81x-Max 30 MHz) */
 		spi-max-frequency = <15625000>;
 		pd-gpios = <&gpioa 8 GPIO_ACTIVE_LOW>; /* PD_N: low = Power-Down */
 		width = <800>;
 		height = <480>;
 		backlight-duty = <96>;
-		touch-poll-ms = <30>;
+		touch-poll-ms = <0>; /* Touch ueber lv_draw_eve_touch */
 	};
 };
 

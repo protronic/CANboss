@@ -20,4 +20,14 @@ config CANBOSSTOUCH_BERRY
 	  Knoten) und od.local/od.local_write (eigenes OD, inkl. der
 	  per RPDO empfangenen PDO-Werte).
 
+config CANBOSSTOUCH_DRAW_EVE
+	bool "LVGL DRAW_EVE fuer FT813 (GPU-Displaylisten)"
+	depends on LV_USE_DRAW_EVE && SPI && GPIO
+	default n
+	help
+	  Rendert die UI ueber LVGL LV_USE_DRAW_EVE als EVE-Displaylisten
+	  auf dem gen4-FT813 (kein MCU-Framebuffer). SPI/GPIO kommen aus
+	  dem DT-Knoten protronic,ft813; Touch ueber lv_draw_eve_touch.
+	  native_sim bleibt beim Zephyr-Display-Binding (SDL/Dummy).
+
 source "Kconfig.zephyr"

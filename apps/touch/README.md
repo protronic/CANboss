@@ -185,18 +185,20 @@ dotnet EDSSharp.dll --export-project --infile eds/canboss_master.eds \
 
 ## Display (FT813 / EVE2 über SPI)
 
-- `drivers/ft813.c`: Zephyr-Displaytreiber (DT-Binding
-  `protronic,ft813`) — Power-up mit CLKINT/CLKEXT-Fallback, Standard-
-  WVGA-Timings, RAM_G als "dummer Framebuffer" mit statischer
-  Scanout-Displayliste, Backlight über `REG_PWM_DUTY`
-  (`display_blanking_off`/`set_brightness`)
-- LVGL (Zephyr-Modul) rendert im **PARTIAL-Modus** in einen
-  RGB565-Streifenpuffer (`CONFIG_LV_Z_VDB_SIZE`); `display_write()`
-  schiebt Dirty-Rechtecke per SPI2 (15,6 MHz) ins RAM_G
-- Touch liefert die FT813-Touch-Engine, zyklisch gepollt
-  (`touch-poll-ms`) und als Input-Events gemeldet
-  (`zephyr,lvgl-pointer-input`) — Display und Touch teilen sich den
-  SPI-Bus über einen Treiber-Mutex, kein Interrupt-Pin nötig
+Auf dem **STM32H573I-DK** rendert LVGL 9.5 per **`LV_USE_DRAW_EVE`**
+direkt als EVE-Displaylisten (kein MCU-Framebuffer):
+
+- `drivers/lv_draw_eve_zephyr.c`: SPI/GPIO-`op_cb` am DT-Knoten
+  `protronic,ft813` (PD_N, manuelles CS, Bring-up 8 MHz → Betrieb
+  15,6 MHz), Panel-Timings gen4-FT813-70 (WVGA), Touch über
+  `lv_draw_eve_touch_create` (CTOUCH-Kompatibilitätsmodus)
+- Zephyr-Chosen `zephyr,display` ist ein `zephyr,dummy-dc` (das
+  LVGL-Modul braucht ein Chosen); die UI nutzt das EVE-Display als
+  Default (`CONFIG_CANBOSSTOUCH_DRAW_EVE`)
+- `native_sim` bleibt beim Zephyr-Display-Binding (SDL / headless Dummy)
+
+Legacy (nicht für stm32h573i_dk): `drivers/ft813.c` als dummer
+RGB565-Framebuffer in `RAM_G` + `zephyr,lvgl-pointer-input`.
 
 ## PoC-Hallenlichtsteuerung (JSON + CANopenNode)
 
@@ -273,7 +275,8 @@ App/                    Anwendung (plattformunabhaengige LVGL-Schicht)
   OD/                   Objektverzeichnis des Panels (DS301)
   generated/            ⚙ vom Generator erzeugte Screens (nicht editieren)
              Zephyr-Applikation (west) — Firmware + Simulation
-  drivers/ft813.c       FT813-Displaytreiber (SPI, RAM_G, Touch-Input)
+  drivers/ft813.c       Legacy: FT813 als RGB565-Framebuffer (nicht stm32)
+  drivers/lv_draw_eve_zephyr.*  DRAW_EVE SPI-Glue + Touch (stm32h573i_dk)
   src/                  CANopen-Stack, SDO-Worker, Berry, main
   boards/, overlays/    stm32h573i_dk + native_sim Konfiguration
   berry/berry_conf.h    Berry-Konfiguration
@@ -284,5 +287,5 @@ eds/                    network.json + EDS-Dateien des Netzwerks
 poc/                    hall_config.json + can_config.json (PoC-Hallen-UI)
 tools/eds2lvgl.py       EDS→LVGL-Codegenerator
 tools/poc2lvgl.py       PoC-JSON→LVGL/CAN-Codegenerator
-west.yml                west-Manifest (Zephyr v4.1.0 + Module)
+west.yml                west-Manifest (Zephyr v4.4.2 + Module)
 ```
