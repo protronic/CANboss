@@ -1,35 +1,40 @@
 /**
  * canboss_poc_can_zephyr.c
  *
- * Zephyr-Backend der PoC-Hallenlichtsteuerung (Gegenstueck zu
- * App/canboss_poc_can_stm32.c bzw. host/canboss_poc_can_host.c).
+ * Zephyr-Backend der PoC-Hallenlichtsteuerung.
  *
- *  - TX: Raw-Frame ueber das can_if-Backend (gleicher Bus wie CANopen)
- *  - RX: der RX-Thread in co_zephyr.c reicht jeden Frame an
- *    canboss_poc_can_rx() weiter (die PoC-UI filtert selbst)
+ *  - TX: Raw-Frame direkt ueber den Chosen-CAN (zephyr,canbus),
+ *    absichtlich K_NO_WAIT. Der gemeinsame can_if-Pfad blockiert bis
+ *    100 ms auf ACK - ohne zweiten Knoten (oder bei offenem Bus) legt
+ *    das den LVGL-Thread lahm und der PoC-Screen „haengt“.
+ *  - RX: weiterhin ueber den CANopen-RX-Hook (canboss_poc_can_rx)
  */
 
 #include "canboss_poc.h"
 #include "canboss_poc_gen.h"
 
-#include "can_if.h"
-
 #include <string.h>
+
+#include <zephyr/device.h>
+#include <zephyr/drivers/can.h>
+#include <zephyr/kernel.h>
 
 bool
 canboss_poc_can_tx(const uint8_t payload[6]) {
-    const cb_can_backend_t* backend = cb_can_backend_find("zephyr");
-    cb_can_frame_t frame;
+	const struct device *can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
+	struct can_frame zf;
+	int ret;
 
-    if (backend == NULL) {
-        return false;
-    }
+	if (!device_is_ready(can_dev)) {
+		return false;
+	}
 
-    frame.id = CANBOSS_POC_TX_ID;
-    frame.dlc = 6;
-    frame.rtr = false;
-    memset(frame.data, 0, sizeof(frame.data));
-    memcpy(frame.data, payload, 6);
+	memset(&zf, 0, sizeof(zf));
+	zf.id = CANBOSS_POC_TX_ID;
+	zf.dlc = 6;
+	memcpy(zf.data, payload, 6);
 
-    return backend->send(&frame) == 0;
+	/* Nie den UI-Thread blockieren: volles TX-FIFO = Frame verwerfen. */
+	ret = can_send(can_dev, &zf, K_NO_WAIT, NULL, NULL);
+	return ret == 0;
 }

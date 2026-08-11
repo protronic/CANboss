@@ -54,6 +54,8 @@ static lv_obj_t* poc_screen;
 static int16_t poc_pressed = -1;         /* gehaltener Button-Index, -1 = keiner */
 static uint32_t poc_next_repeat_tick;
 static uint32_t poc_next_refresh_tick;
+static uint32_t poc_tx_backoff_until;    /* nach TX-Fehlern kurz pausieren */
+static bool poc_tx_warned;
 
 /* minp-RX-Puffer, beschrieben im FDCAN-ISR-Kontext (CO_CANrawRxHook) */
 static volatile uint8_t poc_rx_data[8];
@@ -80,11 +82,28 @@ poc_build_payload(int16_t button_index, uint8_t payload[POC_TX_PAYLOAD_LEN]) {
 static void
 poc_send_button(int16_t button_index) {
     uint8_t payload[POC_TX_PAYLOAD_LEN];
-    poc_build_payload(button_index, payload);
-    if (CANBOSS_POC_CAN_ENABLED) {
-        (void)canboss_poc_can_tx(payload);
+    uint32_t now = lv_tick_get();
+
+    if (!CANBOSS_POC_CAN_ENABLED) {
+        poc_next_refresh_tick = now + CANBOSS_POC_REFRESH_MS;
+        return;
     }
-    poc_next_refresh_tick = lv_tick_get() + CANBOSS_POC_REFRESH_MS;
+    /* Ohne ACK / volles FIFO: nicht stur weiter hammeren (UI-Timer). */
+    if ((int32_t)(now - poc_tx_backoff_until) < 0) {
+        return;
+    }
+
+    poc_build_payload(button_index, payload);
+    if (!canboss_poc_can_tx(payload)) {
+        poc_tx_backoff_until = now + 500u;
+        if (!poc_tx_warned) {
+            poc_tx_warned = true;
+            printf("PoC CAN-TX fehlgeschlagen (kein ACK/FIFO voll?) - "
+                   "Backoff 500 ms, UI bleibt bedienbar\n");
+        }
+        return;
+    }
+    poc_next_refresh_tick = now + CANBOSS_POC_REFRESH_MS;
 }
 
 /* ------------------------------------------------------------------ */
@@ -243,6 +262,9 @@ poc_make_button(lv_obj_t* card, uint32_t index) {
     lv_obj_set_style_bg_color(btn, lv_color_hex(POC_BUTTON_PRESSED), LV_STATE_PRESSED);
     lv_obj_set_style_border_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
+    /* Theme-Focus-Outline wuerde wieder teure Border-Primitives kosten */
+    lv_obj_set_style_outline_width(btn, 0, 0);
+    lv_obj_set_style_outline_width(btn, 0, LV_STATE_FOCUS_KEY);
 
     lv_obj_t* lbl = lv_label_create(btn);
     lv_label_set_text(lbl, canboss_poc_button_labels[index]);
