@@ -9,8 +9,8 @@
  *
  * zephyr,display zeigt auf ein Dummy-Display (Zephyr-LVGL-Modul braucht
  * ein Chosen); die echte UI laeuft ueber LVGL DRAW_EVE + SPI-Glue am
- * ft813-Knoten. Touch kommt von lv_draw_eve_touch, nicht von
- * zephyr,lvgl-pointer-input.
+ * ft813-Knoten. Touch kommt vom Pointer-Indev des DRAW_EVE-Glue
+ * (native FT813-Touch-Engine), nicht von zephyr,lvgl-pointer-input.
  */
 
 / {

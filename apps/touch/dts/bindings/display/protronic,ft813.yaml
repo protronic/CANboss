@@ -36,4 +36,5 @@ properties:
     default: 30
     description: |
       Nur Legacy-Framebuffer-Treiber: Abtastintervall der Touch-Engine
-      in Millisekunden (0 = aus). DRAW_EVE nutzt lv_draw_eve_touch.
+      in Millisekunden (0 = aus). DRAW_EVE pollt die Touch-Engine ueber
+      den eigenen LVGL-Pointer-Indev des Glue-Codes.
