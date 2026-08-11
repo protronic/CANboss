@@ -162,7 +162,12 @@ main(void) {
 #ifdef CONFIG_CANBOSSTOUCH_DRAW_EVE
     /* STM32: Chosen ist Dummy (Zephyr-LVGL-Zwang); echte UI ueber EVE-GPU */
     if (canboss_eve_display_init() != 0) {
-        printf("Fehler: FT813 DRAW_EVE-Init fehlgeschlagen - UI startet nicht\n");
+        /* Ohne antwortenden Chip wuerde die Renderschleife in
+         * EVE_execute_cmd() endlos auf den Koprozessor warten. Also nicht
+         * rendern, aber die Shell fuer 'eve status'/'eve reg' am Leben
+         * halten. */
+        printf("Fehler: FT813 DRAW_EVE-Init fehlgeschlagen - UI startet nicht.\n"
+               "Diagnose in der Shell: 'eve status', 'eve reg 302000 8'\n");
         for (;;) {
             k_msleep(1000);
         }
@@ -180,7 +185,13 @@ main(void) {
 #endif
 
     for (;;) {
+#ifdef CONFIG_CANBOSSTOUCH_DRAW_EVE
+        canboss_eve_lock();
         uint32_t sleep_ms = lv_timer_handler();
+        canboss_eve_unlock();
+#else
+        uint32_t sleep_ms = lv_timer_handler();
+#endif
         if (sleep_ms == LV_NO_TIMER_READY || sleep_ms > 50u) {
             sleep_ms = 50u;
         }

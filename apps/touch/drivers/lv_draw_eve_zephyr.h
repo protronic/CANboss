@@ -24,6 +24,14 @@ int canboss_eve_display_init(void);
 /** Das von canboss_eve_display_init() erzeugte LVGL-Display (oder NULL). */
 lv_display_t *canboss_eve_display_get(void);
 
+/**
+ * Serialisiert den EVE-SPI-Bus zwischen der LVGL-Schleife und den
+ * eve-Shell-Kommandos. DRAW_EVE haelt CS ueber ganze Transaktionen
+ * hinweg, darum muss jeder Nutzer den Bus exklusiv halten.
+ */
+void canboss_eve_lock(void);
+void canboss_eve_unlock(void);
+
 #ifdef __cplusplus
 }
 #endif
