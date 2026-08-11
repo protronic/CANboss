@@ -480,6 +480,13 @@ cb_row_create(lv_obj_t* cont, const canboss_dp_t* dp) {
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(row, 8, 0);
+    /* DRAW_EVE: RAM_DL des FT81x fasst nur 8 KiB pro Frame. Ein Border
+     * kostet dort ~25 DL-Worte (Stencil-Maskierung), ein Radius macht auch
+     * die Fuellung teurer - bei 10+ sichtbaren Zeilen kippt das die
+     * Displayliste ueber die 8-KiB-Grenze (Koprozessor-Fault, eingefrorener
+     * Screen). Flache Zeilen: Trennung uebernehmen Hintergrund + pad_row. */
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_radius(row, 0, 0);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* left = lv_obj_create(row);
