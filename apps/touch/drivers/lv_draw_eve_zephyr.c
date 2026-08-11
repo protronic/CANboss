@@ -31,6 +31,7 @@
 #include <lvgl/lvgl.h>
 #include <lvgl/src/display/lv_display_private.h>
 #include <lvgl/src/draw/eve/lv_draw_eve_private.h>
+#include <lvgl/src/draw/eve/lv_eve.h>
 #include <lvgl/src/drivers/draw/eve/lv_draw_eve_display.h>
 #include <lvgl/src/drivers/draw/eve/lv_draw_eve_display_defines.h>
 #include <lvgl/src/libs/FT800-FT813/EVE_commands.h>
@@ -180,6 +181,68 @@ eve_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 	data->point.y = last_y;
 }
 
+/* Workaround fuer einen Upstream-Bug in lv_eve.c (LVGL 9.5): dessen
+ * Zustands-Cache (Scissor, Farbe, Primitive, Bitmap-Register, ...) lebt in
+ * static-Variablen und wird NIE pro Frame zurueckgesetzt - jede neue
+ * Displayliste startet in der Hardware aber mit Default-Zustand. Stimmt der
+ * veraltete Cache zufaellig mit dem angeforderten Wert ueberein, laesst
+ * lv_eve das noetige DL-Kommando aus: falsche Farben, fehlende Rechtecke,
+ * Glyphen aus falscher Bitmap-Quelle - die Scroll-Artefakte, denn beim
+ * Scrollen aendert sich die Task-Reihenfolge von Frame zu Frame.
+ *
+ * Von aussen laesst sich der Cache nicht schreiben, aber erzwingen: pro
+ * Eintrag ZWEI verschiedene Werte setzen, der zweite ist der DL-Default.
+ * Der zweite Aufruf emittiert garantiert (Cache kann nicht beiden Werten
+ * gleichen) - danach sind Cache und Hardware konsistent. Kostet ~22 Worte
+ * pro Frame, verschwindend gegen die 8-KiB-RAM_DL.
+ *
+ * Laeuft als RENDER_START-Callback NACH dem der DRAW_EVE-Displays (Reihen-
+ * folge = Registrierungsreihenfolge), also innerhalb des CMD-Bursts. */
+static void
+eve_state_sync_cb(lv_event_t *e)
+{
+	ARG_UNUSED(e);
+
+	lv_eve_scissor(1, 1, 2, 2);
+	lv_eve_scissor(0, 0, DT_PROP(FT813_NODE, width) - 1, DT_PROP(FT813_NODE, height) - 1);
+
+	lv_eve_primitive(LV_EVE_PRIMITIVE_POINTS);
+	lv_eve_primitive(LV_EVE_PRIMITIVE_LINES);
+
+	lv_eve_color(lv_color_make(0, 0, 0));
+	lv_eve_color(lv_color_make(255, 255, 255)); /* DL-Default: weiss */
+
+	lv_eve_color_opa(254);
+	lv_eve_color_opa(255);
+
+	lv_eve_line_width(8);
+	lv_eve_line_width(16); /* DL-Default: 16/16 px */
+
+	lv_eve_point_size(2);
+	lv_eve_point_size(1);
+
+	lv_eve_color_mask(0, 0, 0, 1);
+	lv_eve_color_mask(1, 1, 1, 1);
+
+	lv_eve_stencil_func(EVE_NEVER, 0, 255);
+	lv_eve_stencil_func(EVE_ALWAYS, 0, 255);
+
+	lv_eve_stencil_op(EVE_REPLACE, EVE_REPLACE);
+	lv_eve_stencil_op(EVE_KEEP, EVE_KEEP);
+
+	lv_eve_blend_func(EVE_ONE, EVE_ONE);
+	lv_eve_blend_func(EVE_SRC_ALPHA, EVE_ONE_MINUS_SRC_ALPHA);
+
+	lv_eve_bitmap_source(4);
+	lv_eve_bitmap_source(0);
+
+	lv_eve_bitmap_size(EVE_NEAREST, EVE_BORDER, EVE_BORDER, 1, 1);
+	lv_eve_bitmap_size(EVE_NEAREST, EVE_BORDER, EVE_BORDER, 0, 0);
+
+	lv_eve_bitmap_layout(0, 1, 1);
+	lv_eve_bitmap_layout(0, 0, 0);
+}
+
 static void
 eve_op_cb(lv_display_t *disp, lv_draw_eve_operation_t operation, void *data, uint32_t length)
 {
@@ -299,6 +362,11 @@ canboss_eve_display_init(void)
 		return -EIO;
 	}
 	eve_ctx.disp = eve_disp;
+
+	/* NACH lv_draw_eve_display_create registrieren: der Callback muss
+	 * hinter dem render_start_cb des DRAW_EVE-Displays laufen (Burst
+	 * aktiv, DLSTART gesendet). */
+	lv_display_add_event_cb(eve_disp, eve_state_sync_cb, LV_EVENT_RENDER_START, NULL);
 
 	/* lv_draw_eve_display_create() verwirft den Rueckgabewert von
 	 * EVE_init(); ohne eigenen Check meldet die Init auch bei totem
