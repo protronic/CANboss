@@ -488,6 +488,20 @@ cmd_eve_status(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* Nullt die Zaehler, damit sich Fuellhoehe und Faults einem einzelnen
+ * Screen zuordnen lassen: reset, hinnavigieren, status. */
+static int
+cmd_eve_reset(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	eve_dl_max = 0;
+	eve_fault_count = 0;
+	shell_print(sh, "Zaehler genullt - jetzt zum fraglichen Screen navigieren, dann 'eve status'");
+	return 0;
+}
+
 static int
 cmd_eve_touch(const struct shell *sh, size_t argc, char **argv)
 {
@@ -677,6 +691,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_CMD(lvgl, NULL, "LVGL-Displays und Screens auflisten", cmd_eve_lvgl),
 	SHELL_CMD(redraw, NULL, "Neuaufbau erzwingen und Displayliste pruefen", cmd_eve_redraw),
 	SHELL_CMD(status, NULL, "FT813-Zustand (ID, Takt, Frames, Touch-Register)", cmd_eve_status),
+	SHELL_CMD(reset, NULL, "Displaylisten-/Fault-Zaehler nullen", cmd_eve_reset),
 	SHELL_CMD_ARG(touch, NULL, "Touch-Register live mitlesen: eve touch [Sekunden]",
 		      cmd_eve_touch, 1, 1),
 	SHELL_CMD_ARG(reg, NULL, "Register lesen: eve reg <hex-Adresse> [8|16|32]", cmd_eve_reg, 2, 1),
