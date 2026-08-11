@@ -467,22 +467,26 @@ canboss_eve_timer_handler(void)
 	eve_dl_last = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_CMD_DL);
 	if (eve_dl_last > eve_dl_max) {
 		eve_dl_max = eve_dl_last;
+		/* Fruehwarnung auf der UART, bevor der Koprozessor faultet -
+		 * PoC/dichte Screens „haengen“ sonst ohne LVGL-OOM-Meldung. */
+		if (eve_dl_max >= (FT813_RAM_DL_SIZE * 7u) / 8u) {
+			printk("EVE: Displayliste %u/%u Bytes (>%u%%) - Screen zu komplex\n",
+			       eve_dl_max, FT813_RAM_DL_SIZE,
+			       (eve_dl_max * 100u) / FT813_RAM_DL_SIZE);
+		}
 	}
 
 	if (EVE_get_and_reset_fault_state() == EVE_FAULT_RECOVERED) {
 		eve_fault_count++;
 
-		/* CPURESET hat die Touch-Register mitgenommen. Der GT911-Patch
-		 * selbst laesst sich nur durch ein komplettes EVE_init()
-		 * zurueckholen - hier bleibt es beim Wiederherstellen der
-		 * Betriebsart, damit der Zustand klar ist. */
+		/* CPURESET hat die Touch-Register mitgenommen. */
 		lv_draw_eve_memwrite8(eve_disp, LV_EVE_REG_CTOUCH_EXTENDED, 1);
 		lv_draw_eve_memwrite8(eve_disp, LV_EVE_REG_TOUCH_MODE, 3);
 
-		if (eve_fault_count <= 3u) {
-			LOG_ERR("Koprozessor-Fault #%u, Displayliste %u/%u Bytes - "
-				"Screen zu komplex fuer RAM_DL; Touch braucht Neustart",
-				eve_fault_count, eve_dl_last, FT813_RAM_DL_SIZE);
+		if (eve_fault_count <= 5u) {
+			printk("EVE: Koprozessor-Fault #%u, Displayliste %u/%u Bytes - "
+			       "Screen vereinfachen (Border/Radius/Widgets)\n",
+			       eve_fault_count, eve_dl_last, FT813_RAM_DL_SIZE);
 		}
 	}
 

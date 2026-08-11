@@ -23,6 +23,7 @@
 #include "canboss_poc_gen.h"
 #include "canboss_ui.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 
@@ -126,7 +127,6 @@ poc_apply_highlight(uint32_t index, bool active) {
         return;
     }
     lv_obj_set_style_bg_color(btn, lv_color_hex(active ? POC_BUTTON_BG_ACTIVE : POC_BUTTON_BG), 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(active ? POC_BORDER_ACTIVE : POC_BORDER), 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -212,10 +212,12 @@ poc_make_column(lv_obj_t* parent, const char* eyebrow, const char* title, bool g
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(card, 8, 0);
     lv_obj_set_style_pad_row(card, 6, 0);
-    lv_obj_set_style_radius(card, 12, 0);
+    /* DRAW_EVE: Border+Radius kosten ~25 DL-Worte je Objekt. 5 Cards +
+     * 15 Buttons sprengen sonst die 8-KiB-RAM_DL (Screen „haengt“, keine
+     * LVGL-OOM-Meldung). Flach zeichnen, Trennung ueber Hintergrundfarbe. */
+    lv_obj_set_style_radius(card, 0, 0);
     lv_obj_set_style_bg_color(card, lv_color_hex(group ? POC_CARD_BG_GROUP : POC_CARD_BG), 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(POC_BORDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_width(card, 0, 0);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* eyebrow_lbl = lv_label_create(card);
@@ -236,11 +238,10 @@ poc_make_button(lv_obj_t* card, uint32_t index) {
     lv_obj_t* btn = lv_button_create(card);
     lv_obj_set_size(btn, LV_PCT(100), LV_PCT(100));
     lv_obj_set_flex_grow(btn, 1);
-    lv_obj_set_style_radius(btn, 10, 0);
+    lv_obj_set_style_radius(btn, 0, 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(POC_BUTTON_BG), 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(POC_BUTTON_PRESSED), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(btn, lv_color_hex(POC_BORDER), 0);
-    lv_obj_set_style_border_width(btn, 1, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
 
     lv_obj_t* lbl = lv_label_create(btn);
@@ -268,6 +269,10 @@ canboss_poc_screen_create(void) {
     poc_pressed = -1;
 
     lv_obj_t* scr = lv_obj_create(NULL);
+    if (scr == NULL) {
+        printf("LVGL OOM: PoC-Hallenlicht-Screen\n");
+        return;
+    }
     lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(scr, 0, 0);
     lv_obj_set_style_pad_row(scr, 0, 0);
