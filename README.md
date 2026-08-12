@@ -145,13 +145,27 @@ sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
 # ... oder der komfortablere Python-Monitor (Textual); auf PEP-668-Systemen
 # (Arch, Ubuntu 23.04+) per venv oder pipx, siehe apps/monitor-py/README.md:
 python -m venv .venv && .venv/bin/pip install -e CANboss/apps/monitor-py
-.venv/bin/canboss-monitor
+.venv/bin/canboss-monitor --channel vcan0
+# Aus IDE-/SSH-Shell ohne Session-Env (Desktop-Terminal hat das meist schon):
+DISPLAY=:0 .venv/bin/canboss-monitor --channel vcan0
 
 # Terminal 5 (optional): Touch-Panel auf denselben Bus
-# (Default ist Loopback -> vcan-Overlay dazubauen)
+# Default ist Loopback (kein -can-if). Fuer Host-SocketCAN Overlay bauen:
 west build -b native_sim/native/64 CANboss/apps/touch -d build-touch -- \
   -DEXTRA_DTC_OVERLAY_FILE=overlays/vcan.overlay
-./build-touch/zephyr/zephyr.exe
+# Laufzeit: Interface waehlen (Default laut Overlay: vcan0).
+# SDL braucht ein Video-Backend. Cursor-/SSH-Shells erben oft weder
+# WAYLAND_DISPLAY noch DISPLAY/XAUTHORITY → "No available video device".
+# Plasma/Wayland (native SDL, bevorzugt):
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export WAYLAND_DISPLAY=wayland-0
+export SDL_VIDEODRIVER=wayland
+./build-touch/zephyr/zephyr.exe -can-if=vcan0
+./build-touch/zephyr/zephyr.exe -can-if=can0    # echte Hardware
+# Alternativ XWayland (XAUTHORITY von kwin_wayland / Xwayland -auth):
+#   DISPLAY=:0 XAUTHORITY=/run/user/$(id -u)/xauth_* SDL_VIDEODRIVER=x11 \
+#     ./build-touch/zephyr/zephyr.exe -can-if=can0
+# Ohne Overlay erscheint -can-if nicht in --help.
 ```
 
 Was dabei zu sehen ist:
@@ -165,9 +179,16 @@ Was dabei zu sehen ist:
   des Antriebs setzen: die Ist-Drehzahl (0x6044) faehrt eine Rampe.
 - Im Monitor oeffnet `s` die **Berry-REPL** (help() zeigt Beispiele);
   im Panel landen die PDOs der Knoten im Master-OD (0x2110-0x2132) —
-  per **Berry** skriptbar, z.B.:
-  `berry od_readf(48, 0x2300, 1)` (Temperatur des Klimasensors per SDO)
-  oder `berry od_localf(0x2130, 1)` (dieselbe Groesse aus dem RPDO).
+  per **Berry** skriptbar. Klima-Sensor (Node 48) Wert + Messintervall:
+
+  ```text
+  uart:~$ berry "print('T=', od_readf(48, 0x2300, 1), 'RH=', od_readf(48, 0x2300, 2), 'ms=', od_read(48, 0x2303, 0))"
+  # Intervall setzen (UNSIGNED16, 100..60000 ms), dann erneut lesen:
+  uart:~$ berry "od_write(48, 0x2303, 0, 500, 2); print(od_read(48, 0x2303, 0))"
+  # dieselbe Temperatur aus dem RPDO im Master-OD:
+  uart:~$ berry od_localf(0x2130, 1)
+  ```
+
 - Alarmtest: `berry "od_write(48, 0x2304, 1, 22.5)"` senkt die
   Temperaturgrenze des Sensors — Alarm (0x2302/0x2305) schlaegt an.
 

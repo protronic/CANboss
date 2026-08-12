@@ -37,6 +37,9 @@ canboss-monitor --channel can0           # echte Hardware
 canboss-monitor --interface serial --channel /dev/ttyUSB0 --bitrate 115200
 canboss-monitor --offline                # nur EDS ansehen, ohne CAN
 canboss-monitor --eds-dir /pfad/zu/eds   # andere Netzwerkbeschreibung
+
+# Aus IDE-/SSH-Shell ohne gesetztes DISPLAY (lokales X11-Display 0):
+DISPLAY=:0 canboss-monitor --channel can0
 ```
 
 Als `--interface` funktioniert jedes python-can-Interface (socketcan, serial,
