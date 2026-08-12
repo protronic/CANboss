@@ -46,6 +46,6 @@ main(void) {
     static CO_config_t config;
     demo_drive_INIT_CONFIG(config);
 
-    node_app_run("demo_drive", demo_drive, &config, CONFIG_DEMO_NODE_ID, sim);
+    node_app_run("demo_drive", demo_drive, &config, CONFIG_DEMO_NODE_ID, sim, NULL);
     return 0;
 }
