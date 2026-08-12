@@ -23,8 +23,6 @@ manifest:
   remotes:
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
-    - name: protronic
-      url-base: https://github.com/protronic
 
   projects:
     - name: zephyr
@@ -32,10 +30,10 @@ manifest:
       revision: v4.4.2
       path: zephyr
       west-commands: scripts/west-commands.yml
-    # Fork: CMDB-Chunking / Execute-Timeout / RAM_DL-Soft-Limit (DRAW_EVE)
+    # LVGL 9.5 (Pin Zephyr v4.4.2); CMDB-Guards nicht noetig (App-seitig flach + async CAN)
     - name: lvgl
-      remote: protronic
-      revision: 178444268edbc51c642ca3838385f30e7b370373
+      remote: zephyrproject-rtos
+      revision: 85aa60d18b3d5e5588d7b247abf90198f07c8a63
       path: modules/lib/gui/lvgl
     # fuer Hardware-Targets (stm32h573i_dk); Revisionen = Zephyr v4.4.2
     - name: cmsis
