@@ -38,8 +38,13 @@ void canboss_poc_screen_create(void);
  *      ueber CANopenNode/FDCAN; Host: host/canboss_poc_can_host.c ueber
  *      SocketCAN) ---- */
 
-/* Ein 6-Byte-Payload-Frame auf CANBOSS_POC_TX_ID senden. */
+/* Ein 6-Byte-Payload-Frame auf CANBOSS_POC_TX_ID senden.
+ * Darf den Aufrufer nicht auf ACK blockieren (async / non-blocking). */
 bool canboss_poc_can_tx(const uint8_t payload[6]);
+
+/* Seit dem letzten Aufruf gab es asynchrone TX-Fehler (kein ACK/Bus-Off).
+ * Konsumierend: Zaehler wird zurueckgesetzt. */
+bool canboss_poc_can_tx_had_error(void);
 
 /* Empfangenen Raw-Frame an die PoC-UI melden (minp-Highlights).
  * Darf aus ISR-/Thread-Kontext aufgerufen werden — puffert nur. */

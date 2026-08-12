@@ -489,7 +489,9 @@ canboss_eve_timer_handler(void)
 	 * naechste CMD_DLSTART sie auf 0 setzt - also die Fuellhoehe des
 	 * gerade gebauten Frames. */
 	eve_dl_last = lv_draw_eve_memread32(eve_disp, LV_EVE_REG_CMD_DL);
-	if (eve_dl_last > eve_dl_max) {
+	/* Nach Fault/SPI-Muell kann REG_CMD_DL 0xffffffff lesen - nicht
+	 * als Max uebernehmen (Status zeigte sonst 524287%%). */
+	if (eve_dl_last <= FT813_RAM_DL_SIZE && eve_dl_last > eve_dl_max) {
 		eve_dl_max = eve_dl_last;
 		/* Fruehwarnung auf der UART, bevor der Koprozessor faultet -
 		 * PoC/dichte Screens „haengen“ sonst ohne LVGL-OOM-Meldung. */

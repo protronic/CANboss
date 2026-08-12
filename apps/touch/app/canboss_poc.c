@@ -80,30 +80,43 @@ poc_build_payload(int16_t button_index, uint8_t payload[POC_TX_PAYLOAD_LEN]) {
 }
 
 static void
-poc_send_button(int16_t button_index) {
-    uint8_t payload[POC_TX_PAYLOAD_LEN];
-    uint32_t now = lv_tick_get();
+poc_tx_backoff(uint32_t now, uint32_t ms)
+{
+	poc_tx_backoff_until = now + ms;
+	if (!poc_tx_warned) {
+		poc_tx_warned = true;
+		printf("PoC CAN-TX fehlgeschlagen (kein ACK/FIFO voll?) - "
+		       "Backoff %u ms, UI bleibt bedienbar\n",
+		       (unsigned)ms);
+	}
+}
 
-    if (!CANBOSS_POC_CAN_ENABLED) {
-        poc_next_refresh_tick = now + CANBOSS_POC_REFRESH_MS;
-        return;
-    }
-    /* Ohne ACK / volles FIFO: nicht stur weiter hammeren (UI-Timer). */
-    if ((int32_t)(now - poc_tx_backoff_until) < 0) {
-        return;
-    }
+static void
+poc_send_button(int16_t button_index)
+{
+	uint8_t payload[POC_TX_PAYLOAD_LEN];
+	uint32_t now = lv_tick_get();
 
-    poc_build_payload(button_index, payload);
-    if (!canboss_poc_can_tx(payload)) {
-        poc_tx_backoff_until = now + 500u;
-        if (!poc_tx_warned) {
-            poc_tx_warned = true;
-            printf("PoC CAN-TX fehlgeschlagen (kein ACK/FIFO voll?) - "
-                   "Backoff 500 ms, UI bleibt bedienbar\n");
-        }
-        return;
-    }
-    poc_next_refresh_tick = now + CANBOSS_POC_REFRESH_MS;
+	if (!CANBOSS_POC_CAN_ENABLED) {
+		poc_next_refresh_tick = now + CANBOSS_POC_REFRESH_MS;
+		return;
+	}
+	/* Asynchrone Fehler vom letzten Frame (kein ACK) -> laenger pausieren,
+	 * sonst fuellen wir die TX-Mailboxen und die UI bleibt unruhig. */
+	if (canboss_poc_can_tx_had_error()) {
+		poc_tx_backoff(now, 2000u);
+		return;
+	}
+	if ((int32_t)(now - poc_tx_backoff_until) < 0) {
+		return;
+	}
+
+	poc_build_payload(button_index, payload);
+	if (!canboss_poc_can_tx(payload)) {
+		poc_tx_backoff(now, 500u);
+		return;
+	}
+	poc_next_refresh_tick = now + CANBOSS_POC_REFRESH_MS;
 }
 
 /* ------------------------------------------------------------------ */
@@ -198,25 +211,28 @@ poc_button_event_cb(lv_event_t* e) {
 }
 
 static void
-poc_back_clicked(lv_event_t* e) {
-    (void)e;
-    canboss_ui_init();
+poc_back_clicked(lv_event_t *e)
+{
+	(void)e;
+	/* Sofort navigieren - kein Release-TX hier (kann bei Bus-Problemen
+	 * die Mailbox belegen). Delete-CB raeumt den Timer auf. */
+	poc_pressed = -1;
+	canboss_ui_init();
 }
 
-/* Screen wird zerstoert (Navigation zurueck): Timer stoppen, Release senden */
+/* Screen wird zerstoert (Navigation zurueck): Timer stoppen */
 static void
-poc_screen_delete_cb(lv_event_t* e) {
-    (void)e;
-    if (poc_pressed >= 0) {
-        poc_pressed = -1;
-        poc_send_button(-1);
-    }
-    if (poc_timer != NULL) {
-        lv_timer_delete(poc_timer);
-        poc_timer = NULL;
-    }
-    memset(poc_buttons, 0, sizeof(poc_buttons));
-    poc_screen = NULL;
+poc_screen_delete_cb(lv_event_t *e)
+{
+	(void)e;
+	poc_pressed = -1;
+	/* Kein poc_send_button(-1): Verlassen darf nie am CAN haengen. */
+	if (poc_timer != NULL) {
+		lv_timer_delete(poc_timer);
+		poc_timer = NULL;
+	}
+	memset(poc_buttons, 0, sizeof(poc_buttons));
+	poc_screen = NULL;
 }
 
 /* ------------------------------------------------------------------ */
