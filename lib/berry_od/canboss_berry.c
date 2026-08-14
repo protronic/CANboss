@@ -399,21 +399,30 @@ canboss_berry_exec(const char* code) {
 }
 
 void
-canboss_berry_init(OD_t* local_od) {
+canboss_berry_register(void* vm_arg, OD_t* local_od) {
+    bvm* vm = (bvm*)vm_arg;
+
     cb_local_od = local_od;
+
+    be_regfunc(vm, "od_read", m_od_read);
+    be_regfunc(vm, "od_reads", m_od_reads);
+    be_regfunc(vm, "od_readf", m_od_readf);
+    be_regfunc(vm, "od_write", m_od_write);
+    be_regfunc(vm, "od_local", m_od_local);
+    be_regfunc(vm, "od_localf", m_od_localf);
+    be_regfunc(vm, "od_local_write", m_od_local_write);
+    be_regfunc(vm, "od_nodes", m_od_nodes);
+}
+
+void
+canboss_berry_init(OD_t* local_od) {
     if (cb_vm != NULL) {
+        cb_local_od = local_od;
         return;
     }
     cb_vm = be_vm_new();
 
-    be_regfunc(cb_vm, "od_read", m_od_read);
-    be_regfunc(cb_vm, "od_reads", m_od_reads);
-    be_regfunc(cb_vm, "od_readf", m_od_readf);
-    be_regfunc(cb_vm, "od_write", m_od_write);
-    be_regfunc(cb_vm, "od_local", m_od_local);
-    be_regfunc(cb_vm, "od_localf", m_od_localf);
-    be_regfunc(cb_vm, "od_local_write", m_od_local_write);
-    be_regfunc(cb_vm, "od_nodes", m_od_nodes);
+    canboss_berry_register(cb_vm, local_od);
     be_regfunc(cb_vm, "help", m_help);
 }
 

@@ -69,6 +69,26 @@ int cb_co_sdo_read(uint8_t node_id, uint16_t index, uint8_t sub, uint8_t* buf, s
 int cb_co_sdo_write(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t* data, size_t len,
                     uint32_t* abort_code);
 
+/* Datenquelle fuer cb_co_sdo_write_stream(): bis zu max Bytes nach buf
+ * liefern. Rueckgabe: gelesene Bytes, 0 = Ende der Daten, <0 = Fehler
+ * (Transfer wird abgebrochen). Wird im Aufruferthread gerufen. */
+typedef int (*cb_co_stream_read_t)(void* ctx, uint8_t* buf, size_t max);
+
+/* Fortschrittsmeldung waehrend cb_co_sdo_write_stream() (ca. alle 4 KiB
+ * und einmal am Ende); transferred = bestaetigte Bytes. NULL = aus. */
+typedef void (*cb_co_stream_progress_t)(void* ctx, size_t transferred, size_t total);
+
+/* Blockierender, streamender SDO-Download grosser Daten (z.B. Firmware
+ * an 0x1F50:1): die Daten werden stueckweise per read_cb nachgeladen,
+ * der Gesamtumfang total_size muss vorab bekannt sein. Nutzt SDO-
+ * Block-Transfer, wenn der Stack damit uebersetzt ist
+ * (CO_CONFIG_SDO_CLI_BLOCK, siehe port/CO_driver_target.h), sonst
+ * segmentierte Transfers. timeout_ms gilt je Antwort des Servers.
+ * Rueckgabe wie cb_co_sdo_write(). Thread-sicher (CB_MUTEX_SDO). */
+int cb_co_sdo_write_stream(uint8_t node_id, uint16_t index, uint8_t sub, size_t total_size, uint16_t timeout_ms,
+                           cb_co_stream_read_t read_cb, void* read_ctx, cb_co_stream_progress_t progress_cb,
+                           void* progress_ctx, uint32_t* abort_code);
+
 /* SDO-Abortcode als Klartext (statischer Puffer). */
 const char* cb_co_abort_str(uint32_t abort_code);
 

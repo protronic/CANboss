@@ -41,6 +41,12 @@ extern "C" {
  * dann melden od_local*-Aufrufe einen Fehler. */
 void canboss_berry_init(OD_t* local_od);
 
+/* Nur die od_*-Funktionen (inkl. od_nodes, ohne help) in eine bereits
+ * bestehende VM registrieren - fuer Apps, die ihre eigene VM/REPL
+ * mitbringen (z.B. canBLEberry auf der BLEberry-REPL). local_od wie
+ * bei canboss_berry_init(). */
+void canboss_berry_register(void* vm /* bvm* */, OD_t* local_od);
+
 /* Node-IDs fuer od_nodes() hinterlegen (z.B. aus der generierten
  * Netzwerk-Registry der App). */
 void canboss_berry_set_nodes(const uint8_t* ids, uint16_t count);

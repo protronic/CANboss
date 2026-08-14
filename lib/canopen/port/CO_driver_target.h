@@ -39,9 +39,16 @@ extern "C" {
 /* Stack-Konfiguration (Abweichungen von 301/CO_config.h) */
 
 /* SDO-Client fuer den Parametermonitor: expedited + segmented reicht
- * (Block-Transfer braucht kein Geraet der RZ25/Demo-Familie). */
+ * (Block-Transfer braucht kein Geraet der RZ25/Demo-Familie).
+ * Apps mit groesseren Transfers (z.B. Firmware-Download 0x1F50)
+ * uebersteuern das per CO_DRIVER_CUSTOM/CO_driver_custom.h, daher
+ * #ifndef-Guards. */
+#ifndef CO_CONFIG_SDO_CLI
 #define CO_CONFIG_SDO_CLI (CO_CONFIG_SDO_CLI_ENABLE | CO_CONFIG_SDO_CLI_SEGMENTED)
-#define CO_CONFIG_FIFO    (CO_CONFIG_FIFO_ENABLE)
+#endif
+#ifndef CO_CONFIG_FIFO
+#define CO_CONFIG_FIFO (CO_CONFIG_FIFO_ENABLE)
+#endif
 
 /* Master/Panel/Demo-Knoten: kein LSS, keine LEDs, keine
  * Parameterspeicherung. */

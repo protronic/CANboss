@@ -301,6 +301,109 @@ cb_co_sdo_read(uint8_t node_id, uint16_t index, uint8_t sub, uint8_t* buf, size_
     return 0;
 }
 
+/* Streamender SDO-Download: Clientpuffer per read_cb nachfuellen,
+ * bufferPartial signalisiert dem Stack ausstehende Daten (Muster aus
+ * 301/CO_SDOclient.h). Mit CO_CONFIG_SDO_CLI_BLOCK laeuft der Transfer
+ * als Block-Download (Puffer dann 1000 Byte, sonst 32). */
+static CO_SDO_abortCode_t
+cb_write_SDO_stream(CO_SDOclient_t* SDO_C, uint8_t nodeId, uint16_t index, uint8_t subIndex, size_t totalSize,
+                    uint16_t timeout_ms, cb_co_stream_read_t read_cb, void* read_ctx,
+                    cb_co_stream_progress_t progress_cb, void* progress_ctx) {
+    CO_SDO_return_t SDO_ret;
+    uint8_t chunk[128]; /* von read_cb geliefert, noch nicht im Clientpuffer */
+    size_t chunk_len = 0;
+    size_t chunk_off = 0;
+    bool source_eof = false;
+    size_t fed = 0;             /* an den Clientpuffer uebergebene Bytes */
+    size_t last_progress = 0;
+    CO_SDO_abortCode_t abortCode = CO_SDO_AB_NONE;
+
+    SDO_ret = CO_SDOclient_setup(SDO_C, CO_CAN_ID_SDO_CLI + nodeId, CO_CAN_ID_SDO_SRV + nodeId, nodeId);
+    if (SDO_ret != CO_SDO_RT_ok_communicationEnd) {
+        return CO_SDO_AB_GENERAL;
+    }
+
+    SDO_ret = CO_SDOclientDownloadInitiate(SDO_C, index, subIndex, totalSize, timeout_ms, true /* Block wenn moeglich */);
+    if (SDO_ret != CO_SDO_RT_ok_communicationEnd) {
+        return CO_SDO_AB_GENERAL;
+    }
+
+    do {
+        /* Clientpuffer auffuellen, solange Quelle und Platz da sind */
+        while (!source_eof || chunk_off < chunk_len) {
+            if (chunk_off == chunk_len) {
+                if (source_eof || fed >= totalSize) {
+                    break;
+                }
+                int n = read_cb(read_ctx, chunk, sizeof(chunk));
+                if (n < 0) {
+                    /* Quelle kaputt (z.B. Flash-Lesefehler): abbrechen */
+                    (void)CO_SDOclientDownload(SDO_C, 0, true, false, &abortCode, NULL, NULL);
+                    return CO_SDO_AB_NO_DATA;
+                }
+                if (n == 0) {
+                    source_eof = true;
+                    break;
+                }
+                chunk_len = (size_t)n;
+                chunk_off = 0;
+            }
+            size_t w = CO_SDOclientDownloadBufWrite(SDO_C, chunk + chunk_off, chunk_len - chunk_off);
+            chunk_off += w;
+            fed += w;
+            if (w == 0) {
+                break; /* Clientpuffer voll */
+            }
+        }
+
+        bool_t bufferPartial = (fed < totalSize) || (chunk_off < chunk_len);
+
+        uint32_t timeDifference_us = 1000;
+        size_t sizeTransferred = 0;
+        abortCode = CO_SDO_AB_NONE;
+
+        SDO_ret = CO_SDOclientDownload(SDO_C, timeDifference_us, false, bufferPartial, &abortCode, &sizeTransferred,
+                                       NULL);
+        if (SDO_ret < 0) {
+            return abortCode;
+        }
+
+        if (progress_cb != NULL && (sizeTransferred - last_progress >= 4096u || SDO_ret == 0)) {
+            last_progress = sizeTransferred;
+            progress_cb(progress_ctx, sizeTransferred, totalSize);
+        }
+
+        cb_sleep_us(1000);
+    } while (SDO_ret > 0);
+
+    return CO_SDO_AB_NONE;
+}
+
+int
+cb_co_sdo_write_stream(uint8_t node_id, uint16_t index, uint8_t sub, size_t total_size, uint16_t timeout_ms,
+                       cb_co_stream_read_t read_cb, void* read_ctx, cb_co_stream_progress_t progress_cb,
+                       void* progress_ctx, uint32_t* abort_code) {
+    if (!cb_co_connected() || cb_co->SDOclient == NULL || read_cb == NULL) {
+        *abort_code = 0;
+        return -1;
+    }
+    if (timeout_ms == 0) {
+        timeout_ms = CB_CO_SDO_TIMEOUT_MS;
+    }
+
+    cb_mutex_lock(CB_MUTEX_SDO);
+    CO_SDO_abortCode_t abort = cb_write_SDO_stream(&cb_co->SDOclient[0], node_id, index, sub, total_size, timeout_ms,
+                                                   read_cb, read_ctx, progress_cb, progress_ctx);
+    CO_SDOclientClose(&cb_co->SDOclient[0]);
+    cb_mutex_unlock(CB_MUTEX_SDO);
+
+    if (abort != CO_SDO_AB_NONE) {
+        *abort_code = (uint32_t)abort;
+        return -1;
+    }
+    return 0;
+}
+
 int
 cb_co_sdo_write(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t* data, size_t len, uint32_t* abort_code) {
     if (!cb_co_connected() || cb_co->SDOclient == NULL) {
