@@ -1,0 +1,19 @@
+/*
+ * STM32H573I-DK: CAN ueber FDCAN2 am Arduino-Header (RX = D3 = PB5,
+ * TX = D15 = PB6, Transceiver extern) - Pinout wie apps/touch.
+ * NDJSON laeuft auf der ST-Link-VCP-UART (Board-Konsole), die im
+ * Browser per WebSerial erreichbar ist.
+ */
+
+/ {
+	chosen {
+		zephyr,canbus = &fdcan2;
+	};
+};
+
+&fdcan2 {
+	status = "okay";
+	pinctrl-0 = <&fdcan2_rx_pb5 &fdcan2_tx_pb6>;
+	pinctrl-names = "default";
+	bitrate = <500000>;
+};

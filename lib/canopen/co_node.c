@@ -23,6 +23,10 @@
 
 #include "301/CO_SDOclient.h"
 
+#if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) != 0
+#include "309/CO_gateway_ascii.h"
+#endif
+
 #define CB_CO_MAINLINE_INTERVAL_US 1000u
 #define CB_CO_RX_TIMEOUT_MS        1
 #define CB_CO_FIRST_HB_TIME_MS     500u
@@ -33,6 +37,23 @@ static const cb_can_backend_t* cb_backend = NULL;
 static volatile bool cb_running = false;
 static char cb_error_text[256];
 static cb_co_raw_rx_hook_t cb_raw_rx_hook = NULL;
+
+#if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) != 0
+static cb_co_gtwa_read_t cb_gtwa_read_cb = NULL;
+static void* cb_gtwa_read_user = NULL;
+static volatile bool cb_gtwa_enabled = false;
+
+/* Signatur-Adapter CANopenNode -> cb_co_gtwa_read_t (Mainline-Thread) */
+static size_t
+cb_gtwa_read_adapter(void* object, const char* buf, size_t count, uint8_t* connectionOK) {
+    (void)object;
+    *connectionOK = 1;
+    if (cb_gtwa_read_cb == NULL) {
+        return count; /* keine Senke: Ausgabe verwerfen */
+    }
+    return cb_gtwa_read_cb(cb_gtwa_read_user, buf, count);
+}
+#endif /* CO_CONFIG_GTW_ASCII */
 
 void
 cb_co_set_raw_rx_hook(cb_co_raw_rx_hook_t hook) {
@@ -81,7 +102,11 @@ cb_mainline_loop(void* arg) {
 
         /* NMT-Reset-Kommandos vom Bus werden bewusst ignoriert
          * (Monitor/Panel beobachten nur, Demo-Knoten bleiben simpel). */
+#if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) != 0
+        (void)CO_process(cb_co, cb_gtwa_enabled, diff_us, NULL);
+#else
         (void)CO_process(cb_co, false, diff_us, NULL);
+#endif
 
         CO_LOCK_OD(cb_co->CANmodule);
         if (!cb_co->nodeIdUnconfigured && cb_co->CANmodule->CANnormal) {
@@ -167,6 +192,15 @@ cb_co_start(OD_t* od, const CO_config_t* config, const cb_can_backend_t* backend
 
     CO_CANsetNormalMode(cb_co->CANmodule);
 
+#if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) != 0
+    /* Gateway-ASCII, wenn die App es im Config angefordert hat
+     * (CNT_GTWA=1); CO_GTWA_init() hat CO_CANopenInit() erledigt. */
+    if (cb_co->gtwa != NULL && config->CNT_GTWA == 1) {
+        CO_GTWA_initRead(cb_co->gtwa, cb_gtwa_read_adapter, NULL);
+        cb_gtwa_enabled = true;
+    }
+#endif
+
     cb_running = true;
     if (cb_thread_start(CB_THREAD_CAN_RX, cb_rx_loop, NULL) != 0
         || cb_thread_start(CB_THREAD_MAINLINE, cb_mainline_loop, NULL) != 0) {
@@ -186,6 +220,9 @@ cb_co_stop(void) {
     if (!cb_running) {
         return;
     }
+#if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) != 0
+    cb_gtwa_enabled = false;
+#endif
     cb_running = false;
     cb_thread_join(CB_THREAD_CAN_RX);
     cb_thread_join(CB_THREAD_MAINLINE);
@@ -422,6 +459,27 @@ cb_co_sdo_write(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t* dat
     }
     return 0;
 }
+
+#if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) != 0
+void
+cb_co_gtwa_set_read(cb_co_gtwa_read_t cb, void* user) {
+    cb_gtwa_read_user = user;
+    cb_gtwa_read_cb = cb;
+    if (cb_running && cb_co != NULL && cb_co->gtwa != NULL) {
+        CO_GTWA_initRead(cb_co->gtwa, cb_gtwa_read_adapter, NULL);
+    }
+}
+
+int
+cb_co_gtwa_write(const char* buf, size_t len) {
+    if (!cb_running || cb_co == NULL || cb_co->gtwa == NULL || !cb_gtwa_enabled) {
+        return -1;
+    }
+    /* CO_fifo ist Single-Producer/Single-Consumer-sicher: hier der
+     * einspeisende Thread, gelesen wird im Mainline-Thread. */
+    return (int)CO_GTWA_write(cb_co->gtwa, buf, len);
+}
+#endif /* CO_CONFIG_GTW_ASCII */
 
 const char*
 cb_co_abort_str(uint32_t abort_code) {

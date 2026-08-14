@@ -92,6 +92,31 @@ int cb_co_sdo_write_stream(uint8_t node_id, uint16_t index, uint8_t sub, size_t 
 /* SDO-Abortcode als Klartext (statischer Puffer). */
 const char* cb_co_abort_str(uint32_t abort_code);
 
+/* --- Gateway-ASCII (CiA 309-3) ------------------------------------
+ *
+ * Nur nutzbar, wenn der Stack mit CO_CONFIG_GTW_ASCII uebersetzt ist
+ * (CO_DRIVER_CUSTOM der App, siehe apps/gateway) UND die App im
+ * CO_config_t CNT_GTWA=1 setzt. Kommandotext (z.B. "[1] 1 r 0x2500 2 u32\n")
+ * wird eingespeist, die Antwortzeilen ("[1] 123\r\n") liefert der
+ * Read-Callback aus dem Mainline-Thread.
+ *
+ * Achtung: das Gateway teilt sich SDOclient[0] mit cb_co_sdo_read/
+ * _write/_write_stream - GTWA-SDO-Kommandos nicht gleichzeitig mit
+ * eigenen SDO-Transfers absetzen (der jsonapi-Dispatcher serialisiert
+ * das; zusaetzliche Aufrufer muessen selbst darauf achten). */
+
+/* Antwortdaten-Senke; Rueckgabe: verarbeitete Bytes (== len, wenn die
+ * Senke alles uebernimmt; weniger haelt die Ausgabe im Gateway an). */
+typedef size_t (*cb_co_gtwa_read_t)(void* user, const char* buf, size_t len);
+
+/* Senke registrieren (vor oder nach cb_co_start). */
+void cb_co_gtwa_set_read(cb_co_gtwa_read_t cb, void* user);
+
+/* Kommandotext einspeisen. Rueckgabe: uebernommene Bytes (0, wenn die
+ * Kommando-Fifo voll ist - spaeter erneut versuchen) oder -1, wenn
+ * kein Gateway laeuft. */
+int cb_co_gtwa_write(const char* buf, size_t len);
+
 #ifdef __cplusplus
 }
 #endif
