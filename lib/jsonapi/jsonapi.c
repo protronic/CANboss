@@ -84,6 +84,12 @@ static bool fw_uploading;
 static size_t fw_expect, fw_got;
 static char fw_name[JSONAPI_FW_NAME_MAX + 1];
 
+/* Berry-REPL (optional, jsonapi_set_repl) */
+static jsonapi_repl_exec_t repl_exec;
+static void* repl_user;
+static char repl_line[256];
+static size_t repl_len;
+
 /* ------------------------------------------------------------------ */
 /* Ausgabe                                                             */
 
@@ -581,6 +587,82 @@ fw_handle(cj_t obj) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Berry-REPL                                                          */
+
+static void
+repl_flush_line(void) {
+    if (repl_len == 0) {
+        return;
+    }
+
+    char q[420];
+
+    cj_quote(repl_line, repl_len, q, sizeof(q));
+    emitf("{\"repl\":[%s]}", q);
+    repl_len = 0;
+}
+
+void
+jsonapi_repl_out(const char* buf, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        char c = buf[i];
+
+        if (c == '\r') {
+            continue;
+        }
+        if (c == '\n' || repl_len >= sizeof(repl_line) - 1) {
+            if (c != '\n') {
+                repl_line[repl_len++] = c;
+            }
+            repl_flush_line();
+            continue;
+        }
+        repl_line[repl_len++] = c;
+    }
+}
+
+void
+jsonapi_set_repl(jsonapi_repl_exec_t exec, void* user) {
+    repl_exec = exec;
+    repl_user = user;
+}
+
+static void
+repl_run(const char* code) {
+    int ret = repl_exec(repl_user, code);
+
+    repl_flush_line(); /* Restzeile ohne '\n' noch ausgeben */
+    emitf("{\"repl\":{\"ok\":%s}}", (ret == 0) ? "true" : "false");
+}
+
+static void
+repl_handle(cj_t v) {
+    static char code[512];
+
+    if (repl_exec == NULL) {
+        emit_err("repl: nicht verfuegbar (Firmware ohne Berry)");
+        return;
+    }
+
+    if (cj_is_str(v)) {
+        if (cj_as_str(v, code, sizeof(code)) != (size_t)-1) {
+            repl_run(code);
+        }
+    } else if (cj_is_arr(v)) {
+        size_t it = 0;
+        cj_t e;
+
+        while (cj_arr_next(v, &it, &e)) {
+            if (cj_as_str(e, code, sizeof(code)) != (size_t)-1) {
+                repl_run(code);
+            }
+        }
+    } else {
+        emit_err("repl: String oder Array von Strings erwartet");
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* Request-Dispatch                                                    */
 
 static void
@@ -636,19 +718,25 @@ handle_request(const char* line, size_t len) {
         return;
     }
 
+    if (cj_obj_get(root, "repl", &v)) {
+        repl_handle(v);
+        return;
+    }
+
     if (cj_obj_get(root, "ping", &v)) {
         emitf("{\"pong\":%.*s}", (int)v.len, v.s);
         return;
     }
 
     if (cj_obj_get(root, "info", &v)) {
-        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"monmax\":%d,\"fw\":%s,\"fwslots\":%d,\"fwslotcap\":%u}}",
-              CB_JSONAPI_MON_MAX, (fw != NULL) ? "true" : "false", (fw != NULL) ? fw->slot_count() : 0,
-              (fw != NULL) ? (unsigned int)fw->slot_capacity() : 0u);
+        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"repl\":%s,\"monmax\":%d,\"fw\":%s,\"fwslots\":%d,"
+              "\"fwslotcap\":%u}}",
+              (repl_exec != NULL) ? "true" : "false", CB_JSONAPI_MON_MAX, (fw != NULL) ? "true" : "false",
+              (fw != NULL) ? fw->slot_count() : 0, (fw != NULL) ? (unsigned int)fw->slot_capacity() : 0u);
         return;
     }
 
-    emit_err("unbekannter Request (gtwa/mon/fw/ping/info)");
+    emit_err("unbekannter Request (gtwa/mon/fw/repl/ping/info)");
 }
 
 /* ------------------------------------------------------------------ */

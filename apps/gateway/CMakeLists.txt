@@ -58,3 +58,9 @@ target_compile_definitions(app PRIVATE
     CB_FW_RAM_SLOTS=${CONFIG_CANBOSS_GW_FW_SLOTS}
     CB_FW_RAM_SLOT_SIZE=${CONFIG_CANBOSS_GW_FW_SLOT_SIZE}
 )
+
+# Berry-REPL im JSON-Interface (gemeinsame Schicht lib/berry_od;
+# definiert CANBOSS_BERRY fuer die #ifdef-Gates in src/main.c)
+if(CONFIG_CANBOSS_GW_BERRY)
+    include(${CBLIB}/berry_od/berry.cmake)
+endif()

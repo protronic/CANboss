@@ -23,6 +23,10 @@
 #include "canboss_master.h" /* nach co_node.h (CANopenNode-Typen) */
 #include "jsonapi.h"
 
+#ifdef CANBOSS_BERRY
+#include "canboss_berry.h"
+#endif
+
 #if DT_HAS_CHOSEN(canboss_jsonapi_uart)
 #define GW_UART_NODE DT_CHOSEN(canboss_jsonapi_uart)
 #else
@@ -41,6 +45,23 @@ sink_write(void* user, const void* buf, size_t len) {
     }
 }
 
+#ifdef CANBOSS_BERRY
+/* {"repl": ...}: canboss_berry_exec() im poll-Kontext; die
+ * Berry-Ausgabe (be_writebuffer -> lib/berry_od/berry_port.c -> Senke)
+ * geht an jsonapi_repl_out und damit als {"repl":[...]} raus. */
+static void
+berry_sink(void* user, const char* buf, size_t len) {
+    (void)user;
+    jsonapi_repl_out(buf, len);
+}
+
+static int
+repl_exec(void* user, const char* code) {
+    (void)user;
+    return canboss_berry_exec(code);
+}
+#endif
+
 int
 main(void) {
     const cb_can_backend_t* backend = cb_can_backend_find("zephyr");
@@ -52,6 +73,12 @@ main(void) {
     jsonapi_sink_t sink = {.write = sink_write, .user = NULL};
 
     (void)jsonapi_init(&sink, &jsonapi_fw_ram);
+
+#ifdef CANBOSS_BERRY
+    canboss_berry_init(canboss_master);
+    cb_berry_set_sink(berry_sink, NULL);
+    jsonapi_set_repl(repl_exec, NULL);
+#endif
 
     /* OD-Konfiguration des Masters (muss den Stack ueberleben) */
     static CO_config_t cfg;

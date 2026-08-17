@@ -2,7 +2,7 @@
 
 CANboss als **Brücke zwischen Browser und CANopen-Netz**: eine UART
 (WebSerial-tauglich) transportiert zeilenweise JSON in beide
-Richtungen. Drei Funktionsblöcke:
+Richtungen. Vier Funktionsblöcke:
 
 1. **`gtwa`** — CiA-309-3-ASCII-Kommandos, ausgeführt vom
    CANopenNode-Gateway (SDO-Client + NMT-Master):
@@ -32,6 +32,14 @@ Richtungen. Drei Funktionsblöcke:
    {"fw": {"op": "data", "b64": "..."}}          → {"fw": {"ack": 2048}}
    {"fw": {"op": "end", "crc32": "aabbccdd"}}
    {"fw": {"op": "send", "slot": 0, "node": 16}} → {"fw": {"prog": [8192, 46812], ...}}
+   ```
+
+4. **`repl`** — Berry-Code ausführen (Kconfig `CANBOSS_GW_BERRY`,
+   Default an): dieselbe VM samt `od_*`-Bindings wie Monitor/Panel,
+   Ausgabe zeilenweise zurück:
+
+   ```json
+   {"repl": "od_read(16, 0x1017, 0)"}   → {"repl": ["1000"]}, {"repl": {"ok": true}}
    ```
 
 Vollständige Protokollreferenz: [`lib/jsonapi/jsonapi.h`](../../lib/jsonapi/jsonapi.h).

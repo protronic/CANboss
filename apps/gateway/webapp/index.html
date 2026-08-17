@@ -80,6 +80,10 @@
     <button id="btnGtwaLine" class="sec" disabled>Senden</button>
     <button id="btnGtwaHelp" class="sec" disabled>help</button>
   </div>
+  <div class="row">
+    <input type="text" id="replLine" size="34" placeholder='Berry, z. B. od_read(16, 0x1017, 0)'>
+    <button id="btnRepl" class="sec" disabled>Berry ausführen</button>
+  </div>
 </div>
 
 <div class="card">
@@ -242,7 +246,7 @@ async function disconnect() {
 }
 
 function setConnected(on) {
-  for (const id of ['btnGtwaBatch', 'btnGtwaLine', 'btnGtwaHelp', 'btnMonAdd',
+  for (const id of ['btnGtwaBatch', 'btnGtwaLine', 'btnGtwaHelp', 'btnRepl', 'btnMonAdd',
                     'btnMonRate', 'btnMonClear', 'btnUpload', 'btnFwList', 'btnFwSend']) {
     $(id).disabled = !on;
   }
@@ -265,6 +269,10 @@ $('btnGtwaLine').addEventListener('click', async () => {
   if (s) await send({ gtwa: s }).catch(e => log(e.message, 'err'));
 });
 $('btnGtwaHelp').addEventListener('click', () => send({ gtwa: 'help' }).catch(e => log(e.message, 'err')));
+$('btnRepl').addEventListener('click', async () => {
+  const s = $('replLine').value.trim();
+  if (s) await send({ repl: s }).catch(e => log(e.message, 'err'));
+});
 
 /* ---------- PDO-Monitor ---------- */
 function renderMon() {

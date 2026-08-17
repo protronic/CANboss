@@ -26,10 +26,15 @@
  *       Firmware-Annahme + SDO-Streaming zum Knoten; Fortschritt kommt
  *       als {"fw": {"prog": [sent, total], "slot": 0, "node": 16}}.
  *
+ *   {"repl": "1+2"}  bzw.  {"repl": ["led(true)", "millis()"]}
+ *       Berry-Code ausfuehren (optional, jsonapi_set_repl()): Ausgabe
+ *       kommt zeilenweise als {"repl": ["3"]}, den Abschluss meldet
+ *       {"repl": {"ok": true|false}}.
+ *
  *   {"ping": <x>} -> {"pong": <x>}   {"info": true} -> Limits/Version
  *
  * Antworten/Events (Geraet -> Webapp), je eine NDJSON-Zeile:
- *   {"gtwa":[...]}  {"pdo":{...}}  {"fw":{...}}  {"err":"..."}
+ *   {"gtwa":[...]}  {"pdo":{...}}  {"fw":{...}}  {"repl":...}  {"err":"..."}
  *
  * Threading: jsonapi_input() darf aus beliebigen Threads/Callbacks
  * kommen (Ringpuffer); die gesamte Verarbeitung inkl. aller Ausgaben
@@ -68,6 +73,24 @@ void jsonapi_input(const void* buf, size_t len);
 /* Verarbeitung: Requests ausfuehren, GTWA-Antworten und PDO-Events
  * ausgeben. Zyklisch rufen. */
 void jsonapi_poll(void);
+
+/* --- optionale Berry-REPL ------------------------------------------
+ *
+ * Executor fuer {"repl": ...}: fuehrt code synchron aus (laeuft im
+ * poll-Thread; braucht dort entsprechend Stack fuer den
+ * Berry-Compiler). Ausgabetext waehrend der Ausfuehrung ueber
+ * jsonapi_repl_out() liefern - typisch, indem die Berry-Senke
+ * (cb_berry_set_sink bzw. be_writebuffer-Routing der App) dorthin
+ * zeigt. Rueckgabe 0 = ok. */
+typedef int (*jsonapi_repl_exec_t)(void* user, const char* code);
+
+/* Executor registrieren; NULL deaktiviert {"repl": ...} wieder. */
+void jsonapi_set_repl(jsonapi_repl_exec_t exec, void* user);
+
+/* Ausgabetext des gerade laufenden repl-Kommandos (nur aus dem
+ * Executor-Kontext rufen); wird zeilenweise als {"repl":["..."]}
+ * ausgegeben. */
+void jsonapi_repl_out(const char* buf, size_t len);
 
 #ifdef __cplusplus
 }
