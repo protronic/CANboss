@@ -30,6 +30,57 @@ config CANBOSS_GW_BERRY
 	  koennen dann Berry-Code per {"repl": "od_read(16,0x1017,0)"}
 	  ausfuehren. Kostet Flash/RAM und braucht Python (Berry-coc).
 
+config CANBOSS_GW_USB
+	bool "NDJSON ueber USB-CDC-ACM (statt ST-Link-VCP)"
+	depends on USB_DEVICE_STACK_NEXT
+	default y
+	help
+	  Auf Targets mit USB-Device-Controller (STM32H573I-DK: USB_DRD_FS
+	  an PA11/PA12, Board-Label zephyr_udc0) laeuft der NDJSON-Strom
+	  ueber eine CDC-ACM-Instanz am USB-Stecker des Boards. Der Browser
+	  sieht sie als seriellen Port und erreicht sie per WebSerial - ohne
+	  ST-Link, ohne Treiberinstallation.
+
+	  Die Instanz und das chosen "canboss,jsonapi-uart" kommen aus
+	  boards/stm32h573i_dk.overlay; zurueck auf die ST-Link-VCP geht es
+	  mit overlays/stlink_vcp.overlay + overlays/stlink_vcp.conf.
+
+if CANBOSS_GW_USB
+
+config CANBOSS_GW_USB_VID
+	hex "USB Vendor ID"
+	default 0x1209
+	help
+	  Default 0x1209 (pid.codes, der freie VID-Pool fuer Open-Source-
+	  Hardware) zusammen mit der Test-PID 0x0001. Fuer Geraete, die das
+	  Haus verlassen, hier die eigene, registrierte VID/PID eintragen.
+
+config CANBOSS_GW_USB_PID
+	hex "USB Product ID"
+	default 0x0001
+
+config CANBOSS_GW_USB_MANUFACTURER
+	string "USB-Herstellerstring"
+	default "Protronic GmbH"
+
+config CANBOSS_GW_USB_PRODUCT
+	string "USB-Produktstring"
+	default "CANboss Gateway"
+	help
+	  Unter diesem Namen taucht der Port im Browser-Dialog von
+	  navigator.serial.requestPort() auf.
+
+config CANBOSS_GW_USB_MAX_POWER
+	int "bMaxPower in 2-mA-Schritten"
+	range 0 250
+	default 125
+	help
+	  125 = 250 mA. Das Gateway meldet sich bus-powered, damit die
+	  Angabe unabhaengig davon stimmt, ob das DK ueber ST-Link oder
+	  ueber den USB-FS-Stecker versorgt wird.
+
+endif # CANBOSS_GW_USB
+
 endmenu
 
 source "Kconfig.zephyr"

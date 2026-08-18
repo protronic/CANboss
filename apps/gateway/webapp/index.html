@@ -48,6 +48,8 @@
     font: 12.5px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
   .ok { color: var(--ok); } .err { color: var(--err); } .mut { color: var(--mut); }
   #state { font-weight: 600; }
+  #info { font-size: .9em; color: var(--mut); }
+  .grow { flex: 1 1 12rem; }
 </style>
 </head>
 <body>
@@ -59,6 +61,40 @@
     <button id="btnConnect">Seriell verbinden</button>
     <button id="btnDisconnect" class="sec" disabled>Trennen</button>
     <span id="state" class="mut">getrennt</span>
+    <label class="mut" style="margin-left:auto">
+      <input type="checkbox" id="autoConnect" checked> automatisch wiederverbinden
+    </label>
+  </div>
+  <div class="row"><span id="info"></span></div>
+</div>
+
+<div class="card">
+  <h2>SDO lesen / schreiben</h2>
+  <div class="row">
+    <label>Node <input type="number" id="sdoNode" min="0" max="127" value="16"></label>
+    <label>Index <input type="text" id="sdoIndex" value="0x1017" size="7"></label>
+    <label>Sub <input type="number" id="sdoSubIdx" min="0" max="255" value="0"></label>
+    <label>Typ
+      <select id="sdoType">
+        <option>u8</option><option>u16</option><option selected>u32</option><option>u64</option>
+        <option>i8</option><option>i16</option><option>i32</option><option>i64</option>
+        <option>r32</option><option>r64</option><option>vs</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <button id="btnSdoRead" disabled>Lesen</button>
+    <input type="text" id="sdoValue" class="grow" placeholder="Wert zum Schreiben">
+    <button id="btnSdoWrite" class="sec" disabled>Schreiben</button>
+    <span id="sdoResult" class="mut"></span>
+  </div>
+  <div class="row">
+    <span class="mut">NMT (Node 0 = alle):</span>
+    <button class="sec nmt" data-cmd="start" disabled>start</button>
+    <button class="sec nmt" data-cmd="preop" disabled>preop</button>
+    <button class="sec nmt" data-cmd="stop" disabled>stop</button>
+    <button class="sec nmt" data-cmd="reset node" disabled>reset node</button>
+    <button class="sec nmt" data-cmd="reset comm" disabled>reset comm</button>
   </div>
 </div>
 
@@ -76,12 +112,12 @@
   </div>
   <div class="row">
     <button id="btnGtwaBatch" disabled>Batch senden</button>
-    <input type="text" id="gtwaLine" size="34" placeholder='einzelnes Kommando, z. B. "[3] 16 r 0x1017 0 u16"'>
+    <input type="text" id="gtwaLine" class="grow" placeholder='einzelnes Kommando, z. B. "[3] 16 r 0x1017 0 u16"'>
     <button id="btnGtwaLine" class="sec" disabled>Senden</button>
     <button id="btnGtwaHelp" class="sec" disabled>help</button>
   </div>
   <div class="row">
-    <input type="text" id="replLine" size="34" placeholder='Berry, z. B. od_read(16, 0x1017, 0)'>
+    <input type="text" id="replLine" class="grow" placeholder='Berry, z. B. od_read(16, 0x1017, 0)'>
     <button id="btnRepl" class="sec" disabled>Berry ausführen</button>
   </div>
 </div>
@@ -94,9 +130,32 @@
     <label>Rate (ms) <input type="number" id="monRate" min="0" value="100"></label>
     <button id="btnMonRate" class="sec" disabled>Setzen</button>
     <button id="btnMonClear" class="sec" disabled>Alle löschen</button>
+    <span id="monStatus" class="mut"></span>
   </div>
   <table id="monTable"><thead>
     <tr><th>COB-ID</th><th>Daten</th><th>t (ms)</th><th>Frames</th><th></th></tr>
+  </thead><tbody></tbody></table>
+</div>
+
+<div class="card">
+  <h2>SLCAN (Raw-CAN, Lawicel-ASCII)</h2>
+  <div class="row">
+    <button id="btnSlcanOpen" class="sec" disabled>Öffnen (O)</button>
+    <button id="btnSlcanClose" class="sec" disabled>Schließen (C)</button>
+    <label class="mut"><input type="checkbox" id="slcanTs"> Timestamp (Z1)</label>
+    <span id="slcanStatus" class="mut">geschlossen</span>
+  </div>
+  <div class="row">
+    <label>ID <input type="text" id="slcanId" size="5" value="0x123"></label>
+    <input type="text" id="slcanData" class="grow" placeholder="Datenbytes hex, z. B. DE AD BE EF" value="">
+    <button id="btnSlcanTx" disabled>Frame senden</button>
+  </div>
+  <div class="row">
+    <input type="text" id="slcanRaw" class="grow" placeholder="rohes Kommando, z. B. t1232AABB oder V">
+    <button id="btnSlcanRaw" class="sec" disabled>Senden</button>
+  </div>
+  <table id="slcanTable"><thead>
+    <tr><th>ID</th><th>DLC</th><th>Daten</th><th>t (ms)</th><th>Frames</th></tr>
   </thead><tbody></tbody></table>
 </div>
 
@@ -122,6 +181,10 @@
 <div class="card">
   <h2>Protokoll</h2>
   <div id="log"></div>
+  <div class="row">
+    <button id="btnLogClear" class="sec">Leeren</button>
+    <button id="btnLogSave" class="sec">Als .ndjson sichern</button>
+  </div>
 </div>
 
 <script>
@@ -129,15 +192,18 @@
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder();
 
-let port = null, writer = null, readAbort = null;
-let waiters = [];              /* {match(obj), resolve, reject} */
+let port = null, writer = null, readAbort = null, readDone = null;
+let waiters = [];              /* {match(obj), resolve, reject, timer} */
 const monStats = new Map();    /* cob -> {d, t, n} */
+const logLines = [];           /* Rohzeilen fuer den Export */
 
 function log(msg, cls) {
+  logLines.push(msg);
   const el = document.createElement('div');
   if (cls) el.className = cls;
   el.textContent = msg;
   $('log').appendChild(el);
+  while ($('log').childElementCount > 500) $('log').firstChild.remove();
   $('log').scrollTop = $('log').scrollHeight;
 }
 
@@ -152,6 +218,7 @@ const crc32 = b => { let c = 0xFFFFFFFF;
 
 /* ---------- NDJSON-Transport ---------- */
 async function send(obj) {
+  if (!writer) throw new Error('nicht verbunden');
   const line = JSON.stringify(obj);
   log('→ ' + line, 'mut');
   await writer.write(enc.encode(line + '\n'));
@@ -160,11 +227,11 @@ async function send(obj) {
 function waitFor(match, timeoutMs) {
   return new Promise((resolve, reject) => {
     const w = { match: o => match(o) || o.err !== undefined, resolve, reject };
-    waiters.push(w);
-    setTimeout(() => {
+    w.timer = setTimeout(() => {
       waiters = waiters.filter(x => x !== w);
       reject(new Error('Timeout: keine Antwort'));
     }, timeoutMs || 8000);
+    waiters.push(w);
   });
 }
 
@@ -176,9 +243,27 @@ async function request(obj, match, timeoutMs) {
   return r;
 }
 
+/* gtwa-Kommandos bekommen eine laufende [sequence], damit die
+ * asynchronen Antwortzeilen eindeutig zuzuordnen sind. */
+let gtwaSeq = 0;
+function gtwaRequest(cmd, timeoutMs) {
+  const seq = (gtwaSeq = (gtwaSeq % 9999) + 1);
+  const tag = '[' + seq + ']';
+  const p = waitFor(o => Array.isArray(o.gtwa) && o.gtwa.some(l => l.startsWith(tag)), timeoutMs);
+  return send({ gtwa: tag + ' ' + cmd })
+    .then(() => p)
+    .then(r => {
+      if (r.err !== undefined) throw new Error(r.err);
+      const line = r.gtwa.find(l => l.startsWith(tag)).slice(tag.length).trim();
+      if (line.startsWith('ERROR')) throw new Error(line);
+      return line;
+    });
+}
+
 function handleLine(line) {
   line = line.trim();
   if (!line) return;
+  if (line[0] !== '{') { handleSlcanLine(line); return; }
   let obj;
   try { obj = JSON.parse(line); }
   catch (e) { log('?? ' + line, 'err'); return; }
@@ -192,11 +277,13 @@ function handleLine(line) {
     $('sendProg').value = obj.fw.prog[1] ? obj.fw.prog[0] / obj.fw.prog[1] : 0;
     $('fwStatus').textContent = `streamt … ${obj.fw.prog[0]} / ${obj.fw.prog[1]} B an Node ${obj.fw.node}`;
   } else {
+    if (obj.info) renderInfo(obj.info);
+    if (obj.mon) renderMonStatus(obj.mon);
     log('← ' + line, obj.err ? 'err' : (obj.gtwa ? undefined : 'ok'));
   }
 
   waiters = waiters.filter(w => {
-    if (w.match(obj)) { w.resolve(obj); return false; }
+    if (w.match(obj)) { clearTimeout(w.timer); w.resolve(obj); return false; }
     return true;
   });
 }
@@ -204,7 +291,7 @@ function handleLine(line) {
 async function readLoop() {
   const decoder = new TextDecoderStream();
   readAbort = new AbortController();
-  const closed = port.readable.pipeTo(decoder.writable, { signal: readAbort.signal }).catch(() => {});
+  readDone = port.readable.pipeTo(decoder.writable, { signal: readAbort.signal }).catch(() => {});
   const reader = decoder.readable.getReader();
   let buf = '';
   try {
@@ -213,18 +300,40 @@ async function readLoop() {
       if (done) break;
       buf += value;
       let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
+      while ((i = buf.search(/[\r\n]/)) >= 0) {
         handleLine(buf.slice(0, i));
         buf = buf.slice(i + 1);
       }
+      /* Schutz gegen eine Gegenstelle, die nie '\n' schickt */
+      if (buf.length > 65536) buf = '';
     }
-  } catch (e) { /* getrennt */ }
-  await closed;
+  } catch (e) { /* Port weg */ }
+  await readDone;
 }
 
 /* ---------- Verbindung ---------- */
-async function connect() {
-  port = await navigator.serial.requestPort();
+function renderInfo(info) {
+  $('info').textContent =
+    `Protokoll v${info.ver} · gtwa ${info.gtwa ? '✓' : '—'} · SLCAN ${info.slcan ? '✓' : '—'} · ` +
+    `Berry ${info.repl ? '✓' : '—'} · Monitor max. ${info.monmax} COB-IDs · ` +
+    `Firmware ${info.fw ? `${info.fwslots} × ${info.fwslotcap} B` : '—'}`;
+}
+
+function renderMonStatus(mon) {
+  if (mon.dropped !== undefined) {
+    $('monStatus').textContent = `${mon.dropped} Frames verworfen (Puffer voll)`;
+    $('monStatus').className = 'err';
+  } else if (mon.active !== undefined) {
+    $('monStatus').textContent = `${mon.active.length} abonniert, Rate ${mon.rate} ms`;
+    $('monStatus').className = 'mut';
+  }
+}
+
+/* Der H573-DK meldet sich als CDC-ACM: nach jedem Reset des Boards
+ * verschwindet der Port und taucht neu auf. Der connect-Event bringt
+ * ihn zurueck, ohne dass der Nutzer erneut auswaehlen muss. */
+async function openPort(p) {
+  port = p;
   await port.open({ baudRate: 115200 });
   writer = port.writable.getWriter();
   readLoop();
@@ -235,24 +344,170 @@ async function connect() {
   try { await request({ info: true }, o => o.info); } catch (e) { log(e.message, 'err'); }
 }
 
+async function connect() {
+  await openPort(await navigator.serial.requestPort());
+}
+
 async function disconnect() {
-  try { readAbort?.abort(); writer?.releaseLock(); await port?.close(); } catch (e) {}
-  port = null; writer = null;
+  const p = port;
+  port = null;
+  try { readAbort?.abort(); } catch (e) {}
+  try { writer?.releaseLock(); } catch (e) {}
+  writer = null;
+  try { await p?.close(); } catch (e) {}
   setConnected(false);
   $('state').textContent = 'getrennt';
   $('state').className = 'mut';
-  waiters.forEach(w => w.reject(new Error('getrennt')));
+  $('info').textContent = '';
+  setSlcanOpen(false);
+  waiters.forEach(w => { clearTimeout(w.timer); w.reject(new Error('getrennt')); });
   waiters = [];
 }
 
 function setConnected(on) {
+  for (const el of document.querySelectorAll('button.nmt')) el.disabled = !on;
   for (const id of ['btnGtwaBatch', 'btnGtwaLine', 'btnGtwaHelp', 'btnRepl', 'btnMonAdd',
-                    'btnMonRate', 'btnMonClear', 'btnUpload', 'btnFwList', 'btnFwSend']) {
+                    'btnMonRate', 'btnMonClear', 'btnUpload', 'btnFwList', 'btnFwSend',
+                    'btnSdoRead', 'btnSdoWrite', 'btnSlcanOpen', 'btnSlcanClose',
+                    'btnSlcanTx', 'btnSlcanRaw']) {
     $(id).disabled = !on;
   }
   $('btnConnect').disabled = on;
   $('btnDisconnect').disabled = !on;
 }
+
+/* ---------- SDO / NMT ---------- */
+const parseNum = s => {
+  const t = String(s).trim();
+  return parseInt(t, /^0x/i.test(t) ? 16 : 10);
+};
+
+/* CiA 309-3: "[seq] <node> r|w <index> <sub> <datatype> [<value>]" -
+ * die Node-ID steht vor dem Verb, nicht dahinter. */
+function sdoCmd(verb, value) {
+  const node = +$('sdoNode').value;
+  const index = parseNum($('sdoIndex').value);
+  const sub = +$('sdoSubIdx').value;
+  if (!Number.isInteger(index) || index < 0 || index > 0xFFFF) throw new Error('Index ungültig');
+  const head = `${node} ${verb} 0x${index.toString(16)} ${sub} ${$('sdoType').value}`;
+  return value === undefined ? head : `${head} ${value}`;
+}
+
+function sdoStatus(text, cls) {
+  $('sdoResult').textContent = text;
+  $('sdoResult').className = cls || 'mut';
+}
+
+$('btnSdoRead').addEventListener('click', async () => {
+  try {
+    sdoStatus('liest …');
+    const v = await gtwaRequest(sdoCmd('r'), 10000);
+    sdoStatus('= ' + v, 'ok');
+    $('sdoValue').value = v;
+  } catch (e) { sdoStatus(e.message, 'err'); }
+});
+
+$('btnSdoWrite').addEventListener('click', async () => {
+  try {
+    const val = $('sdoValue').value.trim();
+    if (!val) { sdoStatus('kein Wert angegeben', 'err'); return; }
+    sdoStatus('schreibt …');
+    const r = await gtwaRequest(sdoCmd('w', val), 10000);
+    sdoStatus(r || 'OK', 'ok');
+  } catch (e) { sdoStatus(e.message, 'err'); }
+});
+
+for (const b of document.querySelectorAll('button.nmt')) {
+  b.addEventListener('click', async () => {
+    try {
+      sdoStatus(`NMT ${b.dataset.cmd} …`);
+      const r = await gtwaRequest(`${+$('sdoNode').value} ${b.dataset.cmd}`, 10000);
+      sdoStatus(r || 'OK', 'ok');
+    } catch (e) { sdoStatus(e.message, 'err'); }
+  });
+}
+
+/* ---------- SLCAN ---------- */
+const slcanStats = new Map();   /* id -> {dlc, d, t, n} */
+let slcanOpen = false;
+
+function slcanSend(cmd) {
+  if (!writer) return Promise.reject(new Error('nicht verbunden'));
+  log('→ ' + cmd, 'mut');
+  return writer.write(enc.encode(cmd + '\r'));
+}
+
+function setSlcanOpen(on) {
+  slcanOpen = on;
+  $('slcanStatus').textContent = on ? 'offen — Frames laufen' : 'geschlossen';
+  $('slcanStatus').className = on ? 'ok' : 'mut';
+}
+
+function renderSlcan() {
+  const tbody = $('slcanTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  [...slcanStats.keys()].sort((a, b) => a - b).forEach(id => {
+    const s = slcanStats.get(id);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>0x${id.toString(16).toUpperCase().padStart(3, '0')} (${id})</td>` +
+      `<td>${s.dlc}</td><td class="hex">${s.d || (s.rtr ? 'RTR' : '—')}</td>` +
+      `<td>${s.t ?? '—'}</td><td>${s.n}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* Geraet -> Host: "\r" (OK), "\x07" (Fehler), "z" (TX ok),
+ * "tiiildd..[ts]" / "riiil[ts]" (empfangener Frame), "Vxxxx", ... */
+function handleSlcanLine(line) {
+  if (line === '\x07') { log('← SLCAN: Fehler (BEL)', 'err'); return; }
+  if (line === 'z' || line === 'Z') { log('← SLCAN: gesendet', 'ok'); return; }
+
+  const m = line.match(/^([tr])([0-9A-Fa-f]{3})([0-8])([0-9A-Fa-f]*)$/);
+  if (m) {
+    const rtr = m[1] === 'r';
+    const id = parseInt(m[2], 16);
+    const dlc = +m[3];
+    let rest = m[4];
+    let t;
+    const dataLen = rtr ? 0 : 2 * dlc;
+    if (rest.length === dataLen + 4) { t = parseInt(rest.slice(dataLen), 16); rest = rest.slice(0, dataLen); }
+    if (rest.length === dataLen) {
+      const s = slcanStats.get(id) || { n: 0 };
+      s.dlc = dlc; s.d = rtr ? '' : rest.toUpperCase(); s.rtr = rtr; s.t = t; s.n++;
+      slcanStats.set(id, s);
+      renderSlcan();
+      return;
+    }
+  }
+  log('← ' + line);   /* V/N/F-Antworten und alles Unerkannte */
+}
+
+$('btnSlcanOpen').addEventListener('click', async () => {
+  try {
+    if ($('slcanTs').checked) await slcanSend('Z1'); else await slcanSend('Z0');
+    await slcanSend('O');
+    setSlcanOpen(true);
+  } catch (e) { log(e.message, 'err'); }
+});
+$('btnSlcanClose').addEventListener('click', () =>
+  slcanSend('C').then(() => setSlcanOpen(false)).catch(e => log(e.message, 'err')));
+$('slcanTs').addEventListener('change', () =>
+  slcanSend($('slcanTs').checked ? 'Z1' : 'Z0').catch(e => log(e.message, 'err')));
+$('btnSlcanTx').addEventListener('click', async () => {
+  const id = parseNum($('slcanId').value);
+  if (!Number.isInteger(id) || id < 0 || id > 0x7FF) { log('SLCAN: ID ungültig', 'err'); return; }
+  const hex = $('slcanData').value.replace(/[\s,;]+/g, '');
+  if (!/^([0-9A-Fa-f]{2}){0,8}$/.test(hex)) { log('SLCAN: Datenbytes ungültig (0–8 Hex-Paare)', 'err'); return; }
+  const cmd = 't' + id.toString(16).toUpperCase().padStart(3, '0') + (hex.length / 2) + hex.toUpperCase();
+  await slcanSend(cmd).catch(e => log(e.message, 'err'));
+});
+$('btnSlcanRaw').addEventListener('click', async () => {
+  const cmd = $('slcanRaw').value.trim();
+  if (!cmd) return;
+  if (cmd === 'O' || cmd === 'L') setSlcanOpen(true);
+  if (cmd === 'C') setSlcanOpen(false);
+  await slcanSend(cmd).catch(e => log(e.message, 'err'));
+});
 
 /* ---------- gtwa ---------- */
 $('btnGtwaBatch').addEventListener('click', async () => {
@@ -273,6 +528,14 @@ $('btnRepl').addEventListener('click', async () => {
   const s = $('replLine').value.trim();
   if (s) await send({ repl: s }).catch(e => log(e.message, 'err'));
 });
+for (const id of ['gtwaLine', 'replLine', 'sdoValue', 'slcanRaw', 'slcanData']) {
+  $(id).addEventListener('keydown', ev => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    $({ gtwaLine: 'btnGtwaLine', replLine: 'btnRepl', sdoValue: 'btnSdoWrite',
+        slcanRaw: 'btnSlcanRaw', slcanData: 'btnSlcanTx' }[id]).click();
+  });
+}
 
 /* ---------- PDO-Monitor ---------- */
 function renderMon() {
@@ -296,8 +559,7 @@ $('monTable').addEventListener('click', async ev => {
   await send({ mon: { del: [cob] } }).catch(e => log(e.message, 'err'));
 });
 $('btnMonAdd').addEventListener('click', async () => {
-  const raw = $('monCob').value.trim();
-  const v = parseInt(raw, raw.toLowerCase().startsWith('0x') ? 16 : 10);
+  const v = parseNum($('monCob').value);
   if (!v || v < 1 || v > 0x7FF) { log('COB-ID ungültig', 'err'); return; }
   if (!monStats.has(v)) monStats.set(v, { n: 0 });
   renderMon();
@@ -368,13 +630,43 @@ $('btnFwSend').addEventListener('click', async () => {
   }
 });
 
-/* ---------- Buttons ---------- */
+/* ---------- Protokoll ---------- */
+$('btnLogClear').addEventListener('click', () => { logLines.length = 0; $('log').innerHTML = ''; });
+$('btnLogSave').addEventListener('click', () => {
+  const url = URL.createObjectURL(new Blob([logLines.join('\n') + '\n'], { type: 'application/x-ndjson' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'canboss-gateway.ndjson';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ---------- Buttons / Lebenszyklus ---------- */
 $('btnConnect').addEventListener('click', () => connect().catch(e => log(e.message, 'err')));
-$('btnDisconnect').addEventListener('click', disconnect);
+$('btnDisconnect').addEventListener('click', () => { $('autoConnect').checked = false; disconnect(); });
 
 if (!('serial' in navigator)) {
   log('WebSerial wird von diesem Browser nicht unterstützt ' +
       '(Chrome/Edge über HTTPS oder http://localhost verwenden).', 'err');
+} else {
+  /* Board resettet / USB-Kabel gesteckt: Port kommt neu, ohne dass der
+   * Nutzer ihn erneut freigeben muss (die Freigabe bleibt bestehen). */
+  navigator.serial.addEventListener('connect', ev => {
+    if (port || !$('autoConnect').checked) return;
+    log('Port wieder da — verbinde …', 'mut');
+    openPort(ev.target).catch(e => log(e.message, 'err'));
+  });
+  navigator.serial.addEventListener('disconnect', ev => {
+    if (port !== ev.target) return;
+    log('Port verschwunden (Reset/Kabel?)', 'err');
+    disconnect();
+  });
+  /* Bereits freigegebener Port aus einer frueheren Sitzung */
+  navigator.serial.getPorts().then(ps => {
+    if (ps.length === 1 && $('autoConnect').checked) {
+      openPort(ps[0]).catch(() => log('Klick auf "Seriell verbinden" nötig', 'mut'));
+    }
+  });
 }
 </script>
 </body>

@@ -32,11 +32,20 @@ extern "C" {
 /* Default-Node-ID des Masters/Panels (canboss_master.eds: Node 127) */
 #define CB_CO_NODE_ID_DEFAULT 127u
 
-/* Hook fuer Raw-Frames (z.B. PoC-Hallenlicht): wird im RX-Thread fuer
- * jeden empfangenen klassischen Datenframe aufgerufen. Vor
+/* Hook fuer Raw-Frames (z.B. PoC-Hallenlicht, PDO-Monitor, SLCAN):
+ * wird im RX-Thread fuer jeden empfangenen klassischen 11-Bit-Frame
+ * aufgerufen - auch fuer RTR-Frames (rtr=true, data dann ohne
+ * Bedeutung), die der CANopen-Stack selbst nicht sieht. Vor
  * cb_co_start() setzen; NULL = aus. */
-typedef void (*cb_co_raw_rx_hook_t)(uint16_t ident, const uint8_t* data, uint8_t dlc);
+typedef void (*cb_co_raw_rx_hook_t)(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr);
 void cb_co_set_raw_rx_hook(cb_co_raw_rx_hook_t hook);
+
+/* Einen klassischen 11-Bit-Frame direkt ueber das Backend senden -
+ * parallel zum CANopen-Verkehr (SLCAN-Bruecke des Gateways). Das
+ * Backend (Zephyr can_send bzw. SocketCAN write) ist thread-sicher.
+ * Rueckgabe 0 bei Erfolg, -ENODEV wenn der Stack nicht laeuft,
+ * -EIO bei Sendefehler. */
+int cb_co_raw_send(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr);
 
 /* Stack starten: Backend oeffnen, CANopenNode mit dem uebergebenen OD
  * initialisieren, RX- und Mainline-Thread starten.

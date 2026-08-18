@@ -1,0 +1,17 @@
+/*
+ * Rueckfallebene: NDJSON auf der ST-Link-VCP-UART statt am
+ * USB-Stecker des Boards - praktisch, wenn nur ein Kabel (ST-Link)
+ * am Board haengt oder der USB-Device-Stack umgangen werden soll.
+ *
+ *   west build -b stm32h573i_dk CANboss/apps/gateway -d build-gw-h573 -- \
+ *     -DEXTRA_DTC_OVERLAY_FILE=overlays/stlink_vcp.overlay \
+ *     -DEXTRA_CONF_FILE=overlays/stlink_vcp.conf
+ *
+ * Konsole/Logs muessen dann wieder weichen (siehe stlink_vcp.conf).
+ */
+
+/ {
+	chosen {
+		canboss,jsonapi-uart = &usart1;
+	};
+};

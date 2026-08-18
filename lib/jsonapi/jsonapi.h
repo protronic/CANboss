@@ -33,6 +33,12 @@
  *
  *   {"ping": <x>} -> {"pong": <x>}   {"info": true} -> Limits/Version
  *
+ * Zeilen ohne fuehrende '{' sind SLCAN-ASCII (Lawicel: O, C, t..., r...,
+ * Z, V, N, F, ...) und gehen als Raw-CAN parallel zum CANopen-Verkehr
+ * auf denselben Bus; empfangene Frames kommen bei offenem Kanal als
+ * "t..."-Zeilen zurueck. Details: jsonapi_slcan.h. Der Port laesst
+ * sich damit auch direkt an slcand/python-can haengen.
+ *
  * Antworten/Events (Geraet -> Webapp), je eine NDJSON-Zeile:
  *   {"gtwa":[...]}  {"pdo":{...}}  {"fw":{...}}  {"repl":...}  {"err":"..."}
  *

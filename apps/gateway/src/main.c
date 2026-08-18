@@ -1,10 +1,13 @@
 /**
  * CANboss-Gateway: NDJSON-Interface (lib/jsonapi) fuer Webapps.
  *
- * Transport ist eine UART - auf native_sim stdin/stdout des Prozesses
- * (Test per Pipe/socat), auf stm32h573i_dk die ST-Link-VCP, die im
- * Browser direkt per WebSerial erreichbar ist. Ein anderes Geraet
- * (z.B. CDC-ACM-Instanz) waehlt das chosen "canboss,jsonapi-uart".
+ * Transport ist eine UART, ausgewaehlt ueber das chosen
+ * "canboss,jsonapi-uart" (Fallback: zephyr,console):
+ *   - native_sim:     stdin/stdout des Prozesses (Test per Pipe/socat)
+ *   - stm32h573i_dk:  USB-CDC-ACM am USB-Stecker des Boards, im Browser
+ *                     direkt per WebSerial erreichbar (src/usb_cdc.c);
+ *                     die ST-Link-VCP bleibt frei fuer Konsole/Logs.
+ *                     Rueckfall auf die VCP: overlays/stlink_vcp.*
  *
  * CANopen laeuft mit dem canboss_master-OD (Default-Node 126) auf dem
  * chosen zephyr,canbus; das CANopenNode-Gateway (CiA 309-3) wird ueber
@@ -22,6 +25,7 @@
 #include "co_node.h"
 #include "canboss_master.h" /* nach co_node.h (CANopenNode-Typen) */
 #include "jsonapi.h"
+#include "usb_cdc.h"
 
 #ifdef CANBOSS_BERRY
 #include "canboss_berry.h"
@@ -70,6 +74,11 @@ main(void) {
         return -1;
     }
 
+    /* USB-Device hochfahren, bevor CANopen startet: die Enumeration
+     * laeuft dann parallel zur Bus-Initialisierung. Ohne
+     * CONFIG_CANBOSS_GW_USB (native_sim, VCP-Variante) ein No-op. */
+    (void)canboss_usb_init();
+
     jsonapi_sink_t sink = {.write = sink_write, .user = NULL};
 
     (void)jsonapi_init(&sink, &jsonapi_fw_ram);
@@ -99,6 +108,14 @@ main(void) {
 
     for (;;) {
         unsigned char c;
+
+        /* Webapp hat den Port gerade geoeffnet: eine Zeile abschliessen,
+         * die noch im TX-Puffer stand (etwa die Offline-Meldung von
+         * oben). Sonst setzt die Webapp auf einem Fragment auf und
+         * verwirft die erste echte Antwort als Parse-Fehler. */
+        if (canboss_usb_take_attach()) {
+            sink_write(NULL, "\n", 1);
+        }
 
         while (uart_poll_in(gw_uart, &c) == 0) {
             jsonapi_input(&c, 1);

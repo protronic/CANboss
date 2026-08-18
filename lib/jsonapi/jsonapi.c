@@ -19,12 +19,14 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h> /* strtoul (fw end: CRC aus dem Hex-String) */
 #include <string.h>
 
 #include "co_node.h"
 #include "osal.h"
 
 #include "jsonapi_json.h"
+#include "jsonapi_slcan.h"
 
 #if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) == 0
 #error "lib/jsonapi braucht CO_CONFIG_GTW_ASCII (per CO_DRIVER_CUSTOM aktivieren, siehe apps/gateway)"
@@ -246,11 +248,18 @@ gtwa_pump(void) {
 /* ------------------------------------------------------------------ */
 /* PDO-Monitor                                                         */
 
-/* Raw-RX-Hook: laeuft im CAN-RX-Thread, muss kurz bleiben. */
+/* Raw-RX-Hook: laeuft im CAN-RX-Thread, muss kurz bleiben.
+ * Verteilt an SLCAN (alle Frames inkl. RTR) und den PDO-Monitor
+ * (nur Datenframes). */
 static void
-mon_rx_hook(uint16_t ident, const uint8_t* data, uint8_t dlc) {
+mon_rx_hook(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr) {
     uint32_t now_ms = (uint32_t)(cb_now_us() / 1000u);
     bool take = false;
+
+    jsonapi_slcan_rx(ident, data, dlc, rtr);
+    if (rtr) {
+        return;
+    }
 
     K_SPINLOCK(&mon_lock) {
         for (int i = 0; i < mon_count; i++) {
@@ -729,8 +738,8 @@ handle_request(const char* line, size_t len) {
     }
 
     if (cj_obj_get(root, "info", &v)) {
-        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"repl\":%s,\"monmax\":%d,\"fw\":%s,\"fwslots\":%d,"
-              "\"fwslotcap\":%u}}",
+        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"slcan\":true,\"repl\":%s,\"monmax\":%d,\"fw\":%s,"
+              "\"fwslots\":%d,\"fwslotcap\":%u}}",
               (repl_exec != NULL) ? "true" : "false", CB_JSONAPI_MON_MAX, (fw != NULL) ? "true" : "false",
               (fw != NULL) ? fw->slot_count() : 0, (fw != NULL) ? (unsigned int)fw->slot_capacity() : 0u);
         return;
@@ -752,6 +761,7 @@ jsonapi_init(const jsonapi_sink_t* sink, const jsonapi_fw_ops_t* fw_ops) {
 
     cb_co_gtwa_set_read(gtwa_sink, NULL);
     cb_co_set_raw_rx_hook(mon_rx_hook);
+    jsonapi_slcan_init(out_raw);
     return 0;
 }
 
@@ -771,8 +781,19 @@ jsonapi_poll(void) {
             if (req_overflow) {
                 emit_err("Requestzeile zu lang/Ringpuffer voll");
             } else if (req_len > 0) {
+                size_t skip = 0;
+
                 req_line[req_len] = '\0';
-                handle_request(req_line, req_len);
+                while (skip < req_len && (req_line[skip] == ' ' || req_line[skip] == '\t')) {
+                    skip++;
+                }
+                if (skip < req_len && req_line[skip] == '{') {
+                    /* NDJSON-Request */
+                    handle_request(&req_line[skip], req_len - skip);
+                } else if (skip < req_len) {
+                    /* keine '{': SLCAN-ASCII (Lawicel), siehe jsonapi_slcan.h */
+                    jsonapi_slcan_line(&req_line[skip], req_len - skip);
+                }
             }
             req_len = 0;
             req_overflow = false;
@@ -787,4 +808,5 @@ jsonapi_poll(void) {
 
     gtwa_pump();
     mon_pump();
+    jsonapi_slcan_pump();
 }
