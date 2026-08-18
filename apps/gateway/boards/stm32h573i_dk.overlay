@@ -1,13 +1,21 @@
 /*
  * STM32H573I-DK: CAN ueber FDCAN2 am Arduino-Header (RX = D3 = PB5,
  * TX = D15 = PB6, Transceiver extern) - Pinout wie apps/touch.
- * NDJSON laeuft auf der ST-Link-VCP-UART (Board-Konsole), die im
- * Browser per WebSerial erreichbar ist.
+ *
+ * Der NDJSON-Strom laeuft ueber den USB-Stecker des Boards (USB_DRD_FS
+ * an PA11/PA12, Board-Label zephyr_udc0) als CDC-ACM: WebSerial sieht
+ * einen ganz normalen seriellen Port, ohne ST-Link und ohne Treiber.
+ * Die ST-Link-VCP bleibt damit fuer Konsole/Logs frei.
+ *
+ * Zurueck auf die ST-Link-VCP (kein USB-Kabel am Board noetig):
+ *   west build ... -- -DEXTRA_DTC_OVERLAY_FILE=overlays/stlink_vcp.overlay \
+ *                     -DEXTRA_CONF_FILE=overlays/stlink_vcp.conf
  */
 
 / {
 	chosen {
 		zephyr,canbus = &fdcan2;
+		canboss,jsonapi-uart = &cdc_acm_uart0;
 	};
 };
 
@@ -16,4 +24,18 @@
 	pinctrl-0 = <&fdcan2_rx_pb5 &fdcan2_tx_pb6>;
 	pinctrl-names = "default";
 	bitrate = <500000>;
+};
+
+/*
+ * FIFOs grosszuegiger als der Binding-Default (1 KiB): eine
+ * fw-data-Zeile bringt ~2.8 KiB Base64 mit, und der NDJSON-Poll-Thread
+ * leert die UART nur alle 2 ms.
+ */
+&zephyr_udc0 {
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+		label = "CANboss Gateway NDJSON";
+		rx-fifo-size = <2048>;
+		tx-fifo-size = <2048>;
+	};
 };

@@ -1,5 +1,6 @@
 # CANboss-Gateway: NDJSON-Interface fuer Webapps (lib/jsonapi) ueber
-# eine UART (native_sim: PTY/stdio, stm32h573i_dk: ST-Link-VCP).
+# eine UART (native_sim: PTY/stdio, stm32h573i_dk: USB-CDC-ACM am
+# USB-Stecker des Boards; ST-Link-VCP siehe overlays/stlink_vcp.*).
 #
 #   west build -b native_sim/native/64 CANboss/apps/gateway -d build-gw
 #   west build -b stm32h573i_dk       CANboss/apps/gateway -d build-gw-h573
@@ -40,6 +41,9 @@ target_sources(app PRIVATE
     ${CANOPEN_DIR}/301/crc16-ccitt.c
     ${CANOPEN_DIR}/309/CO_gateway_ascii.c
 )
+
+# USB-Device (CDC-ACM) als NDJSON-Transport, z.B. stm32h573i_dk
+target_sources_ifdef(CONFIG_CANBOSS_GW_USB app PRIVATE src/usb_cdc.c)
 
 target_include_directories(app PRIVATE
     src

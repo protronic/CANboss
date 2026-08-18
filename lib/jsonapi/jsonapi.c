@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h> /* strtoul (fw end: CRC aus dem Hex-String) */
 #include <string.h>
 
 #include "co_node.h"

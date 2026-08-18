@@ -20,6 +20,13 @@
      | CO_CONFIG_GTW_ASCII_PRINT_HELP)
 #define CO_CONFIG_GTWA_COMM_BUF_SIZE 1000
 
+/* CO_gateway_ascii.c nutzt das Makro ohne eigenen Default (nur unter
+ * CO_DOXYGEN definiert) - ohne diese Zeile bricht der Build ab, sobald
+ * GTW_ASCII_SDO und SDO_CLI_BLOCK zusammen an sind. 3 Durchlaeufe je
+ * process() beschleunigen den Block-Download, solange die CAN-TX-Queue
+ * des Treibers Platz hat. */
+#define CO_CONFIG_GTW_BLOCK_DL_LOOP 3
+
 #define CO_CONFIG_CRC16 (CO_CONFIG_CRC16_ENABLE)
 
 #define CO_CONFIG_SDO_CLI (CO_CONFIG_SDO_CLI_ENABLE | CO_CONFIG_SDO_CLI_SEGMENTED | CO_CONFIG_SDO_CLI_BLOCK)
