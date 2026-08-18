@@ -3,7 +3,8 @@
 CANboss als **Brücke zwischen Browser und CANopen-Netz**: eine UART
 (WebSerial-tauglich) transportiert zeilenweise JSON in beide
 Richtungen — auf dem STM32H573I-DK ist das der USB-Stecker des Boards
-als CDC-ACM. Vier Funktionsblöcke:
+als CDC-ACM. Zeilen **ohne** führende `{` sind SLCAN-ASCII (unten).
+Fünf Funktionsblöcke:
 
 1. **`gtwa`** — CiA-309-3-ASCII-Kommandos, ausgeführt vom
    CANopenNode-Gateway (SDO-Client + NMT-Master):
@@ -35,7 +36,28 @@ als CDC-ACM. Vier Funktionsblöcke:
    {"fw": {"op": "send", "slot": 0, "node": 16}} → {"fw": {"prog": [8192, 46812], ...}}
    ```
 
-4. **`repl`** — Berry-Code ausführen (Kconfig `CANBOSS_GW_BERRY`,
+4. **SLCAN** — Zeilen ohne führende `{` gehen am JSON-Parser vorbei in
+   die SLCAN-Brücke (Lawicel-ASCII wie CANUSB/slcand/python-can):
+   Raw-CAN **parallel zum laufenden CANopen-Verkehr**, über dasselbe
+   CAN-Interface. `O` öffnet den Kanal (empfangene Frames kommen als
+   `t123 4 DEADBEEF`-Zeilen, CR-terminiert), `t.../r...` sendet,
+   `C` schließt, `Z1` hängt Timestamps an, `V`/`N`/`F` antworten wie
+   üblich; `S`/`M` & Co. werden angenommen und ignoriert (Bitrate und
+   Filter gehören dem CANopen-Stack bzw. dem Devicetree). Extended
+   Frames (`T`/`R`) meldet die Brücke als Fehler — die CAN-Schicht ist
+   bewusst auf klassische 11-Bit-Frames beschränkt (CiA 301).
+   Ein Host, der nur SLCAN spricht, sieht auch nur SLCAN-Antworten —
+   der Port funktioniert damit direkt an `slcand`/python-can:
+
+   ```bash
+   sudo slcand -o -c /dev/ttyACM0 can0 && sudo ip link set can0 up
+   candump can0        # CANopen-Verkehr live, waehrend das Gateway
+                       # weiter als CANopen-Master arbeitet
+   ```
+
+   Protokolldetails: [`lib/jsonapi/jsonapi_slcan.h`](../../lib/jsonapi/jsonapi_slcan.h).
+
+5. **`repl`** — Berry-Code ausführen (Kconfig `CANBOSS_GW_BERRY`,
    Default an): dieselbe VM samt `od_*`-Bindings wie Monitor/Panel,
    Ausgabe zeilenweise zurück:
 
@@ -116,8 +138,9 @@ python3 -m http.server -d CANboss/apps/gateway/webapp 8000
 Die Seite ist eine einzelne Datei ohne Abhängigkeiten und kann genauso
 gut von einem beliebigen Webserver kommen. Neben der rohen
 gtwa-Konsole bietet sie ein SDO-Formular (Node/Index/Sub/Typ, `r`/`w`
-mit automatisch vergebener `[sequence]`), NMT-Knöpfe, den PDO-Monitor
-und den Firmware-Upload. Setzt das Board zurück, verschwindet der
+mit automatisch vergebener `[sequence]`), NMT-Knöpfe, den PDO-Monitor,
+eine SLCAN-Karte (Kanal öffnen, Frames senden, Live-Tabelle der
+empfangenen IDs) und den Firmware-Upload. Setzt das Board zurück, verschwindet der
 CDC-ACM-Port und taucht neu auf — die Webapp verbindet sich über die
 `connect`-Events von WebSerial von selbst wieder, ohne erneute
 Portfreigabe.

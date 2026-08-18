@@ -9,7 +9,7 @@ ohne Hardware ueber `vcan0` testen laesst.
 | App | Beschreibung | Targets |
 |---|---|---|
 | [apps/monitor](apps/monitor/) | Terminal-Parametermonitor (TUI, Port von CANboss-rs) + Berry-REPL | native_sim, POSIX (`make`) |
-| [apps/gateway](apps/gateway/) | NDJSON-Gateway fuer Webapps (gtwa/CiA 309-3, PDO-Monitor, Firmware-Streaming) + WebSerial-Webapp; auf dem DK ueber USB-CDC-ACM | native_sim, stm32h573i_dk |
+| [apps/gateway](apps/gateway/) | NDJSON-Gateway fuer Webapps (gtwa/CiA 309-3, PDO-Monitor, Firmware-Streaming, SLCAN-Bruecke) + WebSerial-Webapp; auf dem DK ueber USB-CDC-ACM | native_sim, stm32h573i_dk |
 | [apps/monitor-py](apps/monitor-py/) | Komfort-Monitor in Python (Textual: Maus, Filter, Schreib-Dialog) | Python 3.10+ (`pip install -e .`) |
 | [apps/touch](apps/touch/) | LVGL-Touchpanel mit EDS-generierten Screens + Berry-Scripting | native_sim, stm32h573i_dk |
 | [apps/nodes/demo_io](apps/nodes/demo_io/) | Demo-Knoten 16 "IO-Modul" mit Prozesswert-Simulation | native_sim |
@@ -24,9 +24,11 @@ Alle Apps teilen sich:
 - `lib/od/` — generierte Objektverzeichnisse (canboss_master fuer
   Monitor+Panel, demo_* fuer die Knoten; Quelle: `eds/*.eds`)
 - `lib/jsonapi/` — NDJSON-Interface fuer Webapps (WebSerial/Web-BLE):
-  gtwa-Kommandos, PDO-Monitor, Firmware-Annahme + SDO-Streaming;
-  transport-agnostisch, die App waehlt die UART per chosen
-  `canboss,jsonapi-uart` (auf dem STM32H573I-DK eine USB-CDC-ACM)
+  gtwa-Kommandos, PDO-Monitor, Firmware-Annahme + SDO-Streaming,
+  SLCAN-Bruecke (Zeilen ohne '{': Lawicel-ASCII <-> Raw-CAN, parallel
+  zum CANopen-Verkehr); transport-agnostisch, die App waehlt die UART
+  per chosen `canboss,jsonapi-uart` (auf dem STM32H573I-DK eine
+  USB-CDC-ACM)
 - `eds/` — network.json + EDS-Dateien des Demo-Netzwerks (eine Quelle)
 - `modules/` — Submodule: [CANopenNode](https://github.com/protronic/CANopenNode)
   (protronic-Fork) und [berry](https://github.com/berry-lang/berry)

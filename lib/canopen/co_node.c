@@ -60,6 +60,20 @@ cb_co_set_raw_rx_hook(cb_co_raw_rx_hook_t hook) {
     cb_raw_rx_hook = hook;
 }
 
+int
+cb_co_raw_send(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr) {
+    if (!cb_running || cb_backend == NULL) {
+        return -ENODEV;
+    }
+
+    cb_can_frame_t frame = {.id = (uint16_t)(ident & 0x7FFu), .dlc = dlc > 8 ? 8 : dlc, .rtr = rtr};
+
+    if (!rtr) {
+        memcpy(frame.data, data, frame.dlc);
+    }
+    return (cb_backend->send(&frame) == 0) ? 0 : -EIO;
+}
+
 /* RX-Thread: Frames vom Backend an den Stack verteilen */
 static void
 cb_rx_loop(void* arg) {
@@ -74,17 +88,19 @@ cb_rx_loop(void* arg) {
             cb_sleep_us(10000);
             continue;
         }
-        if (ret == 0 || frame.rtr) {
+        if (ret == 0) {
             continue;
+        }
+        if (cb_raw_rx_hook != NULL) {
+            cb_raw_rx_hook(frame.id, frame.data, frame.dlc, frame.rtr);
+        }
+        if (frame.rtr) {
+            continue; /* CANopen (CiA 301) nutzt keine RTR-Frames */
         }
         msg.ident = frame.id;
         msg.DLC = frame.dlc;
         memcpy(msg.data, frame.data, sizeof(msg.data));
         CO_CANrxDispatch(cb_co->CANmodule, &msg);
-
-        if (cb_raw_rx_hook != NULL) {
-            cb_raw_rx_hook(frame.id, frame.data, frame.dlc);
-        }
     }
 }
 

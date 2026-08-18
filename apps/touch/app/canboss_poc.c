@@ -124,8 +124,8 @@ poc_send_button(int16_t button_index)
 /* ------------------------------------------------------------------ */
 
 void
-canboss_poc_can_rx(uint16_t ident, const uint8_t* data, uint8_t dlc) {
-    if (ident != CANBOSS_POC_MINP_ID) {
+canboss_poc_can_rx(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr) {
+    if (ident != CANBOSS_POC_MINP_ID || rtr) {
         return;
     }
     uint8_t len = (dlc > 8u) ? 8u : dlc;

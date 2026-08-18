@@ -15,9 +15,10 @@ set(CBLIB ${REPO_ROOT}/lib)
 
 target_sources(app PRIVATE
     src/main.c
-    # NDJSON-Dispatcher + RAM-Firmware-Slots
+    # NDJSON-Dispatcher + SLCAN-Bruecke + RAM-Firmware-Slots
     ${CBLIB}/jsonapi/jsonapi.c
     ${CBLIB}/jsonapi/jsonapi_json.c
+    ${CBLIB}/jsonapi/jsonapi_slcan.c
     ${CBLIB}/jsonapi/jsonapi_fw_ram.c
     # gemeinsame CANopen-Schicht
     ${CBLIB}/canopen/can_if.c

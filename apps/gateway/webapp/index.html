@@ -138,6 +138,28 @@
 </div>
 
 <div class="card">
+  <h2>SLCAN (Raw-CAN, Lawicel-ASCII)</h2>
+  <div class="row">
+    <button id="btnSlcanOpen" class="sec" disabled>Öffnen (O)</button>
+    <button id="btnSlcanClose" class="sec" disabled>Schließen (C)</button>
+    <label class="mut"><input type="checkbox" id="slcanTs"> Timestamp (Z1)</label>
+    <span id="slcanStatus" class="mut">geschlossen</span>
+  </div>
+  <div class="row">
+    <label>ID <input type="text" id="slcanId" size="5" value="0x123"></label>
+    <input type="text" id="slcanData" class="grow" placeholder="Datenbytes hex, z. B. DE AD BE EF" value="">
+    <button id="btnSlcanTx" disabled>Frame senden</button>
+  </div>
+  <div class="row">
+    <input type="text" id="slcanRaw" class="grow" placeholder="rohes Kommando, z. B. t1232AABB oder V">
+    <button id="btnSlcanRaw" class="sec" disabled>Senden</button>
+  </div>
+  <table id="slcanTable"><thead>
+    <tr><th>ID</th><th>DLC</th><th>Daten</th><th>t (ms)</th><th>Frames</th></tr>
+  </thead><tbody></tbody></table>
+</div>
+
+<div class="card">
   <h2>Firmware → CANopen-Knoten</h2>
   <div class="row">
     <input type="file" id="file">
@@ -241,6 +263,7 @@ function gtwaRequest(cmd, timeoutMs) {
 function handleLine(line) {
   line = line.trim();
   if (!line) return;
+  if (line[0] !== '{') { handleSlcanLine(line); return; }
   let obj;
   try { obj = JSON.parse(line); }
   catch (e) { log('?? ' + line, 'err'); return; }
@@ -277,7 +300,7 @@ async function readLoop() {
       if (done) break;
       buf += value;
       let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
+      while ((i = buf.search(/[\r\n]/)) >= 0) {
         handleLine(buf.slice(0, i));
         buf = buf.slice(i + 1);
       }
@@ -291,8 +314,9 @@ async function readLoop() {
 /* ---------- Verbindung ---------- */
 function renderInfo(info) {
   $('info').textContent =
-    `Protokoll v${info.ver} · gtwa ${info.gtwa ? '✓' : '—'} · Berry ${info.repl ? '✓' : '—'} · ` +
-    `Monitor max. ${info.monmax} COB-IDs · Firmware ${info.fw ? `${info.fwslots} × ${info.fwslotcap} B` : '—'}`;
+    `Protokoll v${info.ver} · gtwa ${info.gtwa ? '✓' : '—'} · SLCAN ${info.slcan ? '✓' : '—'} · ` +
+    `Berry ${info.repl ? '✓' : '—'} · Monitor max. ${info.monmax} COB-IDs · ` +
+    `Firmware ${info.fw ? `${info.fwslots} × ${info.fwslotcap} B` : '—'}`;
 }
 
 function renderMonStatus(mon) {
@@ -335,6 +359,7 @@ async function disconnect() {
   $('state').textContent = 'getrennt';
   $('state').className = 'mut';
   $('info').textContent = '';
+  setSlcanOpen(false);
   waiters.forEach(w => { clearTimeout(w.timer); w.reject(new Error('getrennt')); });
   waiters = [];
 }
@@ -343,7 +368,8 @@ function setConnected(on) {
   for (const el of document.querySelectorAll('button.nmt')) el.disabled = !on;
   for (const id of ['btnGtwaBatch', 'btnGtwaLine', 'btnGtwaHelp', 'btnRepl', 'btnMonAdd',
                     'btnMonRate', 'btnMonClear', 'btnUpload', 'btnFwList', 'btnFwSend',
-                    'btnSdoRead', 'btnSdoWrite']) {
+                    'btnSdoRead', 'btnSdoWrite', 'btnSlcanOpen', 'btnSlcanClose',
+                    'btnSlcanTx', 'btnSlcanRaw']) {
     $(id).disabled = !on;
   }
   $('btnConnect').disabled = on;
@@ -401,6 +427,88 @@ for (const b of document.querySelectorAll('button.nmt')) {
   });
 }
 
+/* ---------- SLCAN ---------- */
+const slcanStats = new Map();   /* id -> {dlc, d, t, n} */
+let slcanOpen = false;
+
+function slcanSend(cmd) {
+  if (!writer) return Promise.reject(new Error('nicht verbunden'));
+  log('→ ' + cmd, 'mut');
+  return writer.write(enc.encode(cmd + '\r'));
+}
+
+function setSlcanOpen(on) {
+  slcanOpen = on;
+  $('slcanStatus').textContent = on ? 'offen — Frames laufen' : 'geschlossen';
+  $('slcanStatus').className = on ? 'ok' : 'mut';
+}
+
+function renderSlcan() {
+  const tbody = $('slcanTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  [...slcanStats.keys()].sort((a, b) => a - b).forEach(id => {
+    const s = slcanStats.get(id);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>0x${id.toString(16).toUpperCase().padStart(3, '0')} (${id})</td>` +
+      `<td>${s.dlc}</td><td class="hex">${s.d || (s.rtr ? 'RTR' : '—')}</td>` +
+      `<td>${s.t ?? '—'}</td><td>${s.n}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* Geraet -> Host: "\r" (OK), "\x07" (Fehler), "z" (TX ok),
+ * "tiiildd..[ts]" / "riiil[ts]" (empfangener Frame), "Vxxxx", ... */
+function handleSlcanLine(line) {
+  if (line === '\x07') { log('← SLCAN: Fehler (BEL)', 'err'); return; }
+  if (line === 'z' || line === 'Z') { log('← SLCAN: gesendet', 'ok'); return; }
+
+  const m = line.match(/^([tr])([0-9A-Fa-f]{3})([0-8])([0-9A-Fa-f]*)$/);
+  if (m) {
+    const rtr = m[1] === 'r';
+    const id = parseInt(m[2], 16);
+    const dlc = +m[3];
+    let rest = m[4];
+    let t;
+    const dataLen = rtr ? 0 : 2 * dlc;
+    if (rest.length === dataLen + 4) { t = parseInt(rest.slice(dataLen), 16); rest = rest.slice(0, dataLen); }
+    if (rest.length === dataLen) {
+      const s = slcanStats.get(id) || { n: 0 };
+      s.dlc = dlc; s.d = rtr ? '' : rest.toUpperCase(); s.rtr = rtr; s.t = t; s.n++;
+      slcanStats.set(id, s);
+      renderSlcan();
+      return;
+    }
+  }
+  log('← ' + line);   /* V/N/F-Antworten und alles Unerkannte */
+}
+
+$('btnSlcanOpen').addEventListener('click', async () => {
+  try {
+    if ($('slcanTs').checked) await slcanSend('Z1'); else await slcanSend('Z0');
+    await slcanSend('O');
+    setSlcanOpen(true);
+  } catch (e) { log(e.message, 'err'); }
+});
+$('btnSlcanClose').addEventListener('click', () =>
+  slcanSend('C').then(() => setSlcanOpen(false)).catch(e => log(e.message, 'err')));
+$('slcanTs').addEventListener('change', () =>
+  slcanSend($('slcanTs').checked ? 'Z1' : 'Z0').catch(e => log(e.message, 'err')));
+$('btnSlcanTx').addEventListener('click', async () => {
+  const id = parseNum($('slcanId').value);
+  if (!Number.isInteger(id) || id < 0 || id > 0x7FF) { log('SLCAN: ID ungültig', 'err'); return; }
+  const hex = $('slcanData').value.replace(/[\s,;]+/g, '');
+  if (!/^([0-9A-Fa-f]{2}){0,8}$/.test(hex)) { log('SLCAN: Datenbytes ungültig (0–8 Hex-Paare)', 'err'); return; }
+  const cmd = 't' + id.toString(16).toUpperCase().padStart(3, '0') + (hex.length / 2) + hex.toUpperCase();
+  await slcanSend(cmd).catch(e => log(e.message, 'err'));
+});
+$('btnSlcanRaw').addEventListener('click', async () => {
+  const cmd = $('slcanRaw').value.trim();
+  if (!cmd) return;
+  if (cmd === 'O' || cmd === 'L') setSlcanOpen(true);
+  if (cmd === 'C') setSlcanOpen(false);
+  await slcanSend(cmd).catch(e => log(e.message, 'err'));
+});
+
 /* ---------- gtwa ---------- */
 $('btnGtwaBatch').addEventListener('click', async () => {
   try {
@@ -420,11 +528,12 @@ $('btnRepl').addEventListener('click', async () => {
   const s = $('replLine').value.trim();
   if (s) await send({ repl: s }).catch(e => log(e.message, 'err'));
 });
-for (const id of ['gtwaLine', 'replLine', 'sdoValue']) {
+for (const id of ['gtwaLine', 'replLine', 'sdoValue', 'slcanRaw', 'slcanData']) {
   $(id).addEventListener('keydown', ev => {
     if (ev.key !== 'Enter') return;
     ev.preventDefault();
-    $({ gtwaLine: 'btnGtwaLine', replLine: 'btnRepl', sdoValue: 'btnSdoWrite' }[id]).click();
+    $({ gtwaLine: 'btnGtwaLine', replLine: 'btnRepl', sdoValue: 'btnSdoWrite',
+        slcanRaw: 'btnSlcanRaw', slcanData: 'btnSlcanTx' }[id]).click();
   });
 }
 

@@ -48,7 +48,7 @@ bool canboss_poc_can_tx_had_error(void);
 
 /* Empfangenen Raw-Frame an die PoC-UI melden (minp-Highlights).
  * Darf aus ISR-/Thread-Kontext aufgerufen werden — puffert nur. */
-void canboss_poc_can_rx(uint16_t ident, const uint8_t* data, uint8_t dlc);
+void canboss_poc_can_rx(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr);
 
 #ifdef __cplusplus
 }
