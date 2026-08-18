@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+
+menu "CANboss Gateway (NDJSON fuer Webapps)"
+
+config CANBOSS_GW_NODE_ID
+	int "Eigene CANopen-Node-ID"
+	range 1 127
+	default 126
+	help
+	  Default 126, damit das Gateway neben einem Monitor/Panel
+	  (Node 127, canboss_master-Default) auf demselben Bus laufen kann.
+
+config CANBOSS_GW_FW_SLOTS
+	int "Firmware-Slots im RAM"
+	range 1 4
+	default 1
+
+config CANBOSS_GW_FW_SLOT_SIZE
+	int "Groesse je Firmware-Slot in Bytes"
+	default 65536
+	help
+	  RAM-Backend (lib/jsonapi/jsonapi_fw_ram.c) - nach Reset leer.
+	  STM32H573 hat 640 KiB SRAM; native_sim ist unkritisch.
+
+config CANBOSS_GW_BERRY
+	bool "Berry-REPL im JSON-Interface ({\"repl\": ...})"
+	default y
+	help
+	  Berry-VM mit den od_*-Bindings (lib/berry_od) einbauen; Webapps
+	  koennen dann Berry-Code per {"repl": "od_read(16,0x1017,0)"}
+	  ausfuehren. Kostet Flash/RAM und braucht Python (Berry-coc).
+
+endmenu
+
+source "Kconfig.zephyr"

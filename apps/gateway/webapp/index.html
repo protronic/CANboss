@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CANboss Gateway</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --fg: #1c2128; --card: #ffffff; --line: #d6dae0;
+    --accent: #2563eb; --ok: #15803d; --err: #b91c1c; --mut: #6b7280;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e3e7ec; --card: #1d232b; --line: #333b45;
+      --accent: #60a5fa; --ok: #4ade80; --err: #f87171; --mut: #9aa4b1;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.2rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.45 system-ui, sans-serif; max-width: 880px; margin-inline: auto;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+  h1 small { color: var(--mut); font-weight: normal; }
+  .card { background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+  .card h2 { font-size: 1rem; margin: 0 0 .7rem; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 7px;
+    padding: .45rem .9rem; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.sec { background: transparent; color: var(--accent);
+    border: 1px solid var(--accent); }
+  input, select, textarea { font: inherit; padding: .35rem .5rem;
+    border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg); color: var(--fg); }
+  textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 13px; }
+  input[type=number] { width: 5.2rem; }
+  .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .row + .row { margin-top: .6rem; }
+  progress { width: 100%; height: .8rem; accent-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: .3rem .4rem; border-bottom: 1px solid var(--line);
+    text-align: left; font-size: .92em; }
+  th { color: var(--mut); font-weight: 600; }
+  td.hex { font-family: ui-monospace, monospace; }
+  #log { background: var(--bg); border: 1px solid var(--line); border-radius: 7px;
+    padding: .6rem; height: 12rem; overflow-y: auto;
+    font: 12.5px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .mut { color: var(--mut); }
+  #state { font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>CANboss Gateway <small>— gtwa-Konsole · PDO-Monitor · Firmware → CANopen (NDJSON über WebSerial)</small></h1>
+
+<div class="card">
+  <div class="row">
+    <button id="btnConnect">Seriell verbinden</button>
+    <button id="btnDisconnect" class="sec" disabled>Trennen</button>
+    <span id="state" class="mut">getrennt</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>CiA-309-3-Konsole (gtwa)</h2>
+  <div class="row">
+    <textarea id="gtwaBatch" rows="5" spellcheck="false">{
+  "gtwa": [
+    "0 preop",
+    "[1] 1 w 0x2500 2 u32 123",
+    "[2] 1 r 0x2500 2 u32",
+    "0 start"
+  ]
+}</textarea>
+  </div>
+  <div class="row">
+    <button id="btnGtwaBatch" disabled>Batch senden</button>
+    <input type="text" id="gtwaLine" size="34" placeholder='einzelnes Kommando, z. B. "[3] 16 r 0x1017 0 u16"'>
+    <button id="btnGtwaLine" class="sec" disabled>Senden</button>
+    <button id="btnGtwaHelp" class="sec" disabled>help</button>
+  </div>
+  <div class="row">
+    <input type="text" id="replLine" size="34" placeholder='Berry, z. B. od_read(16, 0x1017, 0)'>
+    <button id="btnRepl" class="sec" disabled>Berry ausführen</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>PDO-Monitor</h2>
+  <div class="row">
+    <label>COB-ID <input type="text" id="monCob" size="7" value="0x181"></label>
+    <button id="btnMonAdd" class="sec" disabled>Abonnieren</button>
+    <label>Rate (ms) <input type="number" id="monRate" min="0" value="100"></label>
+    <button id="btnMonRate" class="sec" disabled>Setzen</button>
+    <button id="btnMonClear" class="sec" disabled>Alle löschen</button>
+  </div>
+  <table id="monTable"><thead>
+    <tr><th>COB-ID</th><th>Daten</th><th>t (ms)</th><th>Frames</th><th></th></tr>
+  </thead><tbody></tbody></table>
+</div>
+
+<div class="card">
+  <h2>Firmware → CANopen-Knoten</h2>
+  <div class="row">
+    <input type="file" id="file">
+    <label>Slot <input type="number" id="fwSlot" min="0" value="0"></label>
+    <button id="btnUpload" disabled>Zum Gateway laden</button>
+    <button id="btnFwList" class="sec" disabled>Slots</button>
+  </div>
+  <div class="row"><progress id="upProg" value="0" max="1"></progress></div>
+  <div class="row">
+    <label>Node <input type="number" id="nodeId" min="1" max="127" value="16"></label>
+    <label>Index <input type="text" id="sdoIdx" value="0x1F50" size="7"></label>
+    <label>Sub <input type="number" id="sdoSub" min="0" max="255" value="1"></label>
+    <button id="btnFwSend" disabled>An Knoten streamen</button>
+  </div>
+  <div class="row"><progress id="sendProg" value="0" max="1"></progress></div>
+  <div class="row"><span id="fwStatus" class="mut"></span></div>
+</div>
+
+<div class="card">
+  <h2>Protokoll</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+
+let port = null, writer = null, readAbort = null;
+let waiters = [];              /* {match(obj), resolve, reject} */
+const monStats = new Map();    /* cob -> {d, t, n} */
+
+function log(msg, cls) {
+  const el = document.createElement('div');
+  if (cls) el.className = cls;
+  el.textContent = msg;
+  $('log').appendChild(el);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+/* ---------- CRC32 (IEEE, wie zlib / Gateway) ---------- */
+const crcT = (() => { const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xFFFFFFFF;
+  for (let i = 0; i < b.length; i++) c = crcT[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0; };
+
+/* ---------- NDJSON-Transport ---------- */
+async function send(obj) {
+  const line = JSON.stringify(obj);
+  log('→ ' + line, 'mut');
+  await writer.write(enc.encode(line + '\n'));
+}
+
+function waitFor(match, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const w = { match: o => match(o) || o.err !== undefined, resolve, reject };
+    waiters.push(w);
+    setTimeout(() => {
+      waiters = waiters.filter(x => x !== w);
+      reject(new Error('Timeout: keine Antwort'));
+    }, timeoutMs || 8000);
+  });
+}
+
+async function request(obj, match, timeoutMs) {
+  const p = waitFor(match, timeoutMs);
+  await send(obj);
+  const r = await p;
+  if (r.err !== undefined) throw new Error(r.err);
+  return r;
+}
+
+function handleLine(line) {
+  line = line.trim();
+  if (!line) return;
+  let obj;
+  try { obj = JSON.parse(line); }
+  catch (e) { log('?? ' + line, 'err'); return; }
+
+  if (obj.pdo) {
+    const s = monStats.get(obj.pdo.cob) || { n: 0 };
+    s.d = obj.pdo.d; s.t = obj.pdo.t; s.n++;
+    monStats.set(obj.pdo.cob, s);
+    renderMon();
+  } else if (obj.fw && obj.fw.prog) {
+    $('sendProg').value = obj.fw.prog[1] ? obj.fw.prog[0] / obj.fw.prog[1] : 0;
+    $('fwStatus').textContent = `streamt … ${obj.fw.prog[0]} / ${obj.fw.prog[1]} B an Node ${obj.fw.node}`;
+  } else {
+    log('← ' + line, obj.err ? 'err' : (obj.gtwa ? undefined : 'ok'));
+  }
+
+  waiters = waiters.filter(w => {
+    if (w.match(obj)) { w.resolve(obj); return false; }
+    return true;
+  });
+}
+
+async function readLoop() {
+  const decoder = new TextDecoderStream();
+  readAbort = new AbortController();
+  const closed = port.readable.pipeTo(decoder.writable, { signal: readAbort.signal }).catch(() => {});
+  const reader = decoder.readable.getReader();
+  let buf = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        handleLine(buf.slice(0, i));
+        buf = buf.slice(i + 1);
+      }
+    }
+  } catch (e) { /* getrennt */ }
+  await closed;
+}
+
+/* ---------- Verbindung ---------- */
+async function connect() {
+  port = await navigator.serial.requestPort();
+  await port.open({ baudRate: 115200 });
+  writer = port.writable.getWriter();
+  readLoop();
+  setConnected(true);
+  $('state').textContent = 'verbunden';
+  $('state').className = 'ok';
+  log('verbunden', 'ok');
+  try { await request({ info: true }, o => o.info); } catch (e) { log(e.message, 'err'); }
+}
+
+async function disconnect() {
+  try { readAbort?.abort(); writer?.releaseLock(); await port?.close(); } catch (e) {}
+  port = null; writer = null;
+  setConnected(false);
+  $('state').textContent = 'getrennt';
+  $('state').className = 'mut';
+  waiters.forEach(w => w.reject(new Error('getrennt')));
+  waiters = [];
+}
+
+function setConnected(on) {
+  for (const id of ['btnGtwaBatch', 'btnGtwaLine', 'btnGtwaHelp', 'btnRepl', 'btnMonAdd',
+                    'btnMonRate', 'btnMonClear', 'btnUpload', 'btnFwList', 'btnFwSend']) {
+    $(id).disabled = !on;
+  }
+  $('btnConnect').disabled = on;
+  $('btnDisconnect').disabled = !on;
+}
+
+/* ---------- gtwa ---------- */
+$('btnGtwaBatch').addEventListener('click', async () => {
+  try {
+    const txt = $('gtwaBatch').value.trim();
+    /* JSON-Objekt {"gtwa": [...]} oder einfach eine Zeile pro Kommando */
+    const obj = txt.startsWith('{') ? JSON.parse(txt)
+      : { gtwa: txt.split('\n').map(s => s.trim()).filter(Boolean) };
+    await send(obj);
+  } catch (e) { log('Batch: ' + e.message, 'err'); }
+});
+$('btnGtwaLine').addEventListener('click', async () => {
+  const s = $('gtwaLine').value.trim();
+  if (s) await send({ gtwa: s }).catch(e => log(e.message, 'err'));
+});
+$('btnGtwaHelp').addEventListener('click', () => send({ gtwa: 'help' }).catch(e => log(e.message, 'err')));
+$('btnRepl').addEventListener('click', async () => {
+  const s = $('replLine').value.trim();
+  if (s) await send({ repl: s }).catch(e => log(e.message, 'err'));
+});
+
+/* ---------- PDO-Monitor ---------- */
+function renderMon() {
+  const tbody = $('monTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  [...monStats.keys()].sort((a, b) => a - b).forEach(cob => {
+    const s = monStats.get(cob);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>0x${cob.toString(16).toUpperCase().padStart(3, '0')} (${cob})</td>` +
+      `<td class="hex">${s.d ?? '—'}</td><td>${s.t ?? '—'}</td><td>${s.n}</td>` +
+      `<td><button class="sec" data-del="${cob}">abbestellen</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+$('monTable').addEventListener('click', async ev => {
+  const b = ev.target.closest('button');
+  if (!b || b.dataset.del === undefined) return;
+  const cob = +b.dataset.del;
+  monStats.delete(cob);
+  renderMon();
+  await send({ mon: { del: [cob] } }).catch(e => log(e.message, 'err'));
+});
+$('btnMonAdd').addEventListener('click', async () => {
+  const raw = $('monCob').value.trim();
+  const v = parseInt(raw, raw.toLowerCase().startsWith('0x') ? 16 : 10);
+  if (!v || v < 1 || v > 0x7FF) { log('COB-ID ungültig', 'err'); return; }
+  if (!monStats.has(v)) monStats.set(v, { n: 0 });
+  renderMon();
+  await send({ mon: { add: [v] } }).catch(e => log(e.message, 'err'));
+});
+$('btnMonRate').addEventListener('click', () =>
+  send({ mon: { rate: +$('monRate').value } }).catch(e => log(e.message, 'err')));
+$('btnMonClear').addEventListener('click', async () => {
+  monStats.clear(); renderMon();
+  await send({ mon: { clear: true } }).catch(e => log(e.message, 'err'));
+});
+
+/* ---------- Firmware ---------- */
+const CHUNK = 2048; /* Binaerbytes je data-Zeile (Base64 ~2.7 KiB) */
+
+function toB64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+
+$('btnUpload').addEventListener('click', async () => {
+  const f = $('file').files[0];
+  if (!f) { log('keine Datei gewählt', 'err'); return; }
+  const slot = +$('fwSlot').value;
+  const buf = new Uint8Array(await f.arrayBuffer());
+  const name = f.name.slice(0, 43).replace(/\s+/g, '_');
+
+  $('btnUpload').disabled = true;
+  try {
+    await request({ fw: { op: 'begin', slot, size: buf.length, name } },
+                  o => o.fw && o.fw.ok === 'begin');
+    for (let off = 0; off < buf.length; off += CHUNK) {
+      const chunk = buf.subarray(off, off + CHUNK);
+      await request({ fw: { op: 'data', b64: toB64(chunk) } }, o => o.fw && o.fw.ack !== undefined);
+      $('upProg').value = (off + chunk.length) / buf.length;
+    }
+    const crcHex = crc32(buf).toString(16).padStart(8, '0');
+    await request({ fw: { op: 'end', crc32: crcHex } }, o => o.fw && o.fw.ok === 'end', 20000);
+    $('fwStatus').textContent = `Upload ok (${buf.length} B, CRC ${crcHex})`;
+    log(`Upload ok: ${name}`, 'ok');
+  } catch (e) {
+    log('Upload: ' + e.message, 'err');
+    await send({ fw: { op: 'abort' } }).catch(() => {});
+  } finally {
+    $('btnUpload').disabled = false;
+  }
+});
+
+$('btnFwList').addEventListener('click', () =>
+  request({ fw: { op: 'list' } }, o => o.fw && o.fw.slots).catch(e => log(e.message, 'err')));
+
+$('btnFwSend').addEventListener('click', async () => {
+  const slot = +$('fwSlot').value;
+  const node = +$('nodeId').value;
+  const index = $('sdoIdx').value.trim();
+  const sub = +$('sdoSub').value;
+  $('sendProg').value = 0;
+  $('fwStatus').textContent = `Slot ${slot} → Node ${node} …`;
+  try {
+    await request({ fw: { op: 'send', slot, node, index, sub } },
+                  o => o.fw && o.fw.ok === 'send', 600000);
+    $('sendProg').value = 1;
+    $('fwStatus').textContent = 'übertragen ✓';
+  } catch (e) {
+    log('send: ' + e.message, 'err');
+    $('fwStatus').textContent = 'Fehler: ' + e.message;
+  }
+});
+
+/* ---------- Buttons ---------- */
+$('btnConnect').addEventListener('click', () => connect().catch(e => log(e.message, 'err')));
+$('btnDisconnect').addEventListener('click', disconnect);
+
+if (!('serial' in navigator)) {
+  log('WebSerial wird von diesem Browser nicht unterstützt ' +
+      '(Chrome/Edge über HTTPS oder http://localhost verwenden).', 'err');
+}
+</script>
+</body>
+</html>
