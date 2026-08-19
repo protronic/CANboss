@@ -99,6 +99,7 @@ main(void) {
     canboss_berry_init(canboss_master);
     cb_berry_set_sink(berry_sink, NULL);
     jsonapi_set_repl(repl_exec, NULL);
+    LOG_INF("Berry-REPL bereit");
 #endif
 
     /* OD-Konfiguration des Masters (muss den Stack ueberleben) */
@@ -120,6 +121,8 @@ main(void) {
     } else {
         LOG_INF("CANopen laeuft (gtwa + SLCAN bereit)");
     }
+
+    LOG_INF("NDJSON-Loop laeuft (Transport: %s)", gw_uart->name);
 
     for (;;) {
         unsigned char c;

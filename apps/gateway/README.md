@@ -134,8 +134,12 @@ picocom -b 115200 /dev/ttyACM0     # oder minicom -D /dev/ttyACM0 -b 115200
 
 Typischer Bring-up-Blick: nach dem Reset erscheinen Banner,
 `CANboss-Gateway startet (Node-ID 126)`, `USB-Device aktiv … warte auf
-Host` und `CANopen laeuft (gtwa + SLCAN bereit)`; beim Anstecken des
-User-USB-C folgen `USBD: reset` → `USBD: configuration`. Ab da muss
+Host`, `Berry-REPL bereit`, `CANopen laeuft (gtwa + SLCAN bereit)` und
+`NDJSON-Loop laeuft`; beim Anstecken des User-USB-C folgen
+`USBD: reset` → `USBD: configuration`. Bleibt eine der Zeilen aus,
+zeigt die letzte sichtbare, in welchem Schritt es hängt — bitte dann
+mit angeschlossenem Terminal den Reset-Taster drücken und die Ausgabe
+mitnehmen. Ab da muss
 das Gerät in `lsusb` stehen (`1209:0001`). Danach z. B. mit
 `can show can@4000a800` prüfen, ob der Bus fehlerfrei läuft, und mit
 `kernel threads` die Stacks im Blick behalten.
@@ -167,6 +171,19 @@ dort gehört `usart1` dem NDJSON-Strom.
   `lib/canopen/can_zephyr.c` bleiben USB-CDC, Shell und NDJSON davon
   unabhängig; `can show can@4000a800` zeigt die wachsenden
   Error-Counter.
+- **Zwei `ttyACM` — den richtigen erwischen!** Sobald das Gateway
+  enumeriert, gibt es *zwei* CDC-Geräte, und die Nummerierung
+  (`ttyACM0`/`ttyACM1`) kann nach Reset/Umstecken wechseln. Auf dem
+  NDJSON-Port gibt es keinen `uart:~$`-Prompt (Enter = leere Zeile =
+  ignoriert; Tippzeichen quittiert die SLCAN-Brücke mit einem
+  unsichtbaren BEL). Stabil per ID ansprechen:
+
+  ```bash
+  ls -l /dev/serial/by-id/
+  # ...STLINK-V3EC...-if02      -> Konsole/Shell (picocom hier drauf)
+  # ...CANboss_Gateway...-if00  -> NDJSON/WebSerial/slcand
+  picocom -b 115200 /dev/serial/by-id/usb-STMicroelectronics_STLINK-V3EC_*-if02
+  ```
 - **Konsole mitlesen:** `picocom -b 115200 /dev/ttyACM0` (ST-LINK-VCP)
   zeigt nach Reset das Boot-Banner, `CANboss-Gateway startet …`,
   `USB-Device aktiv … warte auf Host` und beim Anstecken die
