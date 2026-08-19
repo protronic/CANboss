@@ -38,7 +38,7 @@ Alle Apps teilen sich:
 ## Workspace einrichten
 
 ```bash
-pip3 install west          # oder: pacman -S python-west / paru -S python-west
+pip3 install west          # oder: pacman -S python-west / shelly install aur python-west
 mkdir canboss-workspace && cd canboss-workspace
 west init -m https://github.com/protronic/CANboss
 west update
@@ -89,7 +89,7 @@ Ab Zephyr **4.4** braucht das Hardware-Target das Zephyr-SDK **1.0**
 (aeltere SDKs 0.16/0.17 sind inkompatibel). Unter Arch/CachyOS:
 
 ```bash
-paru -S zephyr-sdk                 # installiert nach /opt/zephyr-sdk
+shelly install aur zephyr-sdk        # installiert nach /opt/zephyr-sdk
 export ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk
 unset ZEPHYR_TOOLCHAIN_VARIANT     # Default = zephyr/gnu aus dem SDK
 
@@ -106,7 +106,7 @@ west flash
 Ohne SDK (System-Crosscompiler):
 
 ```bash
-# Arch: arm-none-eabi-gcc (+ optional paru -S arm-none-eabi-picolibc)
+# Arch: arm-none-eabi-gcc (+ optional shelly install aur arm-none-eabi-picolibc)
 ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb GNUARMEMB_TOOLCHAIN_PATH=/usr \
   west build -b stm32h573i_dk CANboss/apps/touch -- -DTOOLCHAIN_HAS_PICOLIBC=ON
 ```
