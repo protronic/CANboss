@@ -44,3 +44,22 @@ berry> exit
 `led(0..3)` = LD1 gruen / LD2 orange / LD3 rot / LD4 blau (ACTIVE_LOW).
 `btn()` = User-Taste PC13. `pin("A".."I", n [, v])` = beliebiger GPIO.
 Nicht anfassen: PA11/PA12 (USB), PG0 (TCPP), PB8/PB9 (I2C4).
+
+## Test: Dead-Battery-Workaround wirklich noetig?
+
+Diese Demo baut **ohne** den Rd-Workaround aus `lib/usbc`
+(`CANBOSS_USBC_NO_RD_WORKAROUND` in der CMakeLists) - Zephyrs
+`soc_early_init_hook()` schaltet die CC-Pull-downs also ab, nur der
+TCPP03 wird noch in den NORMAL-Modus geschaltet. Auf der
+ST-Link-Konsole steht dann `UCPD Dead-Battery Rd AUS`.
+
+- **Enumeriert CN17 trotzdem** (`lsusb -d 1209:0001`, wichtig: auch
+  mit einem C-auf-C-Kabel testen, nicht nur A-auf-C - ohne Rd liefert
+  ein reiner Type-C-Host normalerweise kein VBUS bzw. zieht es
+  zurueck): Workaround wird nicht gebraucht -> Block in
+  `lib/usbc/usbc_h573_dk.c` und diesen Schalter entfernen.
+- **Enumeriert CN17 nicht mehr**: Workaround bleibt; nur den
+  Schalter hier zuruecknehmen, damit die Demo wieder dem
+  Gateway-Stand entspricht.
+
+Das Gateway behaelt den Workaround, bis der Test bestanden ist.

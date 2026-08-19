@@ -16,9 +16,17 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(canboss_usbc, LOG_LEVEL_INF);
 
-#if defined(CONFIG_SOC_SERIES_STM32H5X) && defined(PWR_UCPDR_UCPD_DBDIS)
+#if defined(CONFIG_SOC_SERIES_STM32H5X) && defined(PWR_UCPDR_UCPD_DBDIS) \
+    && !defined(CANBOSS_USBC_NO_RD_WORKAROUND)
 /* Gegenspieler zu soc_early_init_hook() (Zephyr v4.4.2): Rd auf den
- * CC-Leitungen halten, sonst sieht ein Type-C-Host keinen Sink. */
+ * CC-Leitungen halten, sonst sieht ein Type-C-Host keinen Sink.
+ *
+ * Testschalter: eine App kann den Workaround mit der Compile-
+ * Definition CANBOSS_USBC_NO_RD_WORKAROUND abschalten, um auf der
+ * Hardware zu pruefen, ob er wirklich noch gebraucht wird -
+ * canboss_usbc_prepare() loggt den Zustand ("Rd an/AUS"). Faellt der
+ * Test positiv aus (Enumeration klappt mit "Rd AUS", auch am
+ * C-auf-C-Kabel), kann der ganze Block hier raus. */
 static int
 usbc_keep_cc_rd(void) {
     LL_PWR_EnableUCPDDeadBattery();

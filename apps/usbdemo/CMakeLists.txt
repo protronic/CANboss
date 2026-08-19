@@ -43,4 +43,10 @@ target_sources(app PRIVATE
 
 target_include_directories(app BEFORE PRIVATE ${BERRY_OD_DIR} src)
 target_include_directories(app PRIVATE ${REPO_ROOT}/lib/usbc)
+
+# Hardware-Test: Dead-Battery-Workaround (lib/usbc) hier abgeschaltet -
+# die Demo bootet mit "UCPD Dead-Battery Rd AUS". Enumeriert CN17
+# trotzdem (auch am C-auf-C-Kabel), kann der Workaround ueberall raus;
+# das Gateway behaelt ihn, bis der Test bestanden ist.
+target_compile_definitions(app PRIVATE CANBOSS_USBC_NO_RD_WORKAROUND)
 target_include_directories(app PRIVATE ${BERRY_DIR}/src)

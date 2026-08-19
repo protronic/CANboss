@@ -12,7 +12,9 @@
  *    UDC stack"). Diese Datei haelt Rd per SYS_INIT(PRE_KERNEL_1)
  *    dagegen. TODO: Beim Zephyr-Update pruefen, ob soc.c inzwischen
  *    CONFIG_UDC_DRIVER beruecksichtigt - dann kann der SYS_INIT-Hook
- *    hier ersatzlos raus.
+ *    hier ersatzlos raus. Zum Hardware-Test vorab: die Compile-
+ *    Definition CANBOSS_USBC_NO_RD_WORKAROUND schaltet den Hook je
+ *    App ab (aktuell in apps/usbdemo gesetzt, siehe dortige README).
  *
  * 2. Der TCPP03-M20 (I2C4 @ 0x34, Enable an PG0) muss in den
  *    NORMAL-Modus; solange er in Low-Power haengt, bleibt D+/D- am
