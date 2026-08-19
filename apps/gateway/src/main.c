@@ -109,7 +109,9 @@ main(void) {
     canboss_master_INIT_CONFIG(cfg);
     cfg.CNT_GTWA = 1; /* Gateway-ASCII aktivieren (co_node/jsonapi) */
 
-    if (cb_co_start(canboss_master, &cfg, backend, "zephyr,canbus", 0, CONFIG_CANBOSS_GW_NODE_ID) != 0) {
+    if (!IS_ENABLED(CONFIG_CANBOSS_GW_CANOPEN)) {
+        LOG_WRN("CANopen deaktiviert (CONFIG_CANBOSS_GW_CANOPEN=n) - nur USB/NDJSON");
+    } else if (cb_co_start(canboss_master, &cfg, backend, "zephyr,canbus", 0, CONFIG_CANBOSS_GW_NODE_ID) != 0) {
         char msg[192];
         int n = snprintf(msg, sizeof(msg), "{\"err\":\"CANopen offline: %s\"}\n", cb_co_error());
 

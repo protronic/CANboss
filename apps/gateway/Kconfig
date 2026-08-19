@@ -30,6 +30,14 @@ config CANBOSS_GW_BERRY
 	  koennen dann Berry-Code per {"repl": "od_read(16,0x1017,0)"}
 	  ausfuehren. Kostet Flash/RAM und braucht Python (Berry-coc).
 
+config CANBOSS_GW_CANOPEN
+	bool "CANopen-Stack starten"
+	default y
+	help
+	  Zum Eingrenzen von Problemen abschaltbar (z.B. USB-Bisect am
+	  H573I-DK, overlays/nocanopen.conf): ohne CANopen laufen ping/
+	  info/fw-Upload weiter, gtwa und SLCAN melden Fehler.
+
 config CANBOSS_GW_USB
 	bool "NDJSON ueber USB-CDC-ACM (statt ST-Link-VCP)"
 	depends on USB_DEVICE_STACK_NEXT
