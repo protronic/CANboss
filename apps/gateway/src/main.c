@@ -18,6 +18,12 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/logging/log.h>
+
+/* Statusmeldungen auf der Zephyr-Konsole (stm32h573i_dk: ST-Link-VCP,
+ * boards/stm32h573i_dk.conf). Auf native_sim ist CONFIG_LOG=n - dort
+ * gehoert stdout dem NDJSON-Strom und LOG_* compiliert zu nichts. */
+LOG_MODULE_REGISTER(canboss_gw, LOG_LEVEL_INF);
 
 #include <stdio.h>
 #include <string.h>
@@ -74,10 +80,16 @@ main(void) {
         return -1;
     }
 
+    LOG_INF("CANboss-Gateway startet (Node-ID %d)", CONFIG_CANBOSS_GW_NODE_ID);
+
     /* USB-Device hochfahren, bevor CANopen startet: die Enumeration
      * laeuft dann parallel zur Bus-Initialisierung. Ohne
      * CONFIG_CANBOSS_GW_USB (native_sim, VCP-Variante) ein No-op. */
-    (void)canboss_usb_init();
+    int usb_err = canboss_usb_init();
+
+    if (usb_err != 0) {
+        LOG_ERR("USB-CDC-Init fehlgeschlagen (%d) - NDJSON-Transport tot", usb_err);
+    }
 
     jsonapi_sink_t sink = {.write = sink_write, .user = NULL};
 
@@ -103,7 +115,10 @@ main(void) {
         if (n > 0) {
             sink_write(NULL, msg, (size_t)n);
         }
+        LOG_ERR("CANopen offline: %s", cb_co_error());
         /* weiterlaufen: ping/info/fw-Upload gehen auch offline */
+    } else {
+        LOG_INF("CANopen laeuft (gtwa + SLCAN bereit)");
     }
 
     for (;;) {

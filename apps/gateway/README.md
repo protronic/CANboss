@@ -104,12 +104,35 @@ VID/PID/Strings sind über `CANBOSS_GW_USB_*` einstellbar
 (`Kconfig`).
 
 Weil der JSON-Strom nicht mehr auf der VCP liegt, ist die
-**ST-Link-VCP jetzt frei für Konsole und Logs** (115200) — praktisch
-für die Inbetriebnahme. Der USB-Stack selbst ist dabei auf `ERR`
-gedreht bzw. stumm (`boards/stm32h573i_dk.conf`): `usbd_cdc_acm.c`
-macht auf INF-Level einen Hexdump *jedes* empfangenen Pakets, der mit
-`LOG_MODE_MINIMAL` synchron auf die 115200-Baud-VCP ginge und jeden
-Firmware-Upload ausbremsen würde.
+**ST-Link-VCP jetzt die Zephyr-Konsole** (115200): Boot-Banner,
+Statusmeldungen des Gateways und der USB-Enumerations-Fortschritt
+(`usbd`-Stack auf INF) laufen dort auf — praktisch für die
+Inbetriebnahme. Nur CDC-ACM bleibt stumm
+(`boards/stm32h573i_dk.conf`): `usbd_cdc_acm.c` macht auf INF-Level
+einen Hexdump *jedes* empfangenen Pakets, der mit `LOG_MODE_MINIMAL`
+synchron auf die 115200-Baud-VCP ginge und jeden Firmware-Upload
+ausbremsen würde.
+
+#### Board taucht nicht in `lsusb` auf?
+
+- **Richtiger Stecker?** Das Gateway hängt am **User-USB-C** (am
+  STM32-USB_FS, per TCPP01 geschützt) — nicht am ST-LINK-Port. Es
+  braucht also zwei Kabel: ST-LINK für Flashen/Konsole, User-USB für
+  NDJSON/WebSerial.
+- **Dead-Battery-Workaround aktiv?** Zephyr v4.4.2 schaltet in
+  `soc_early_init_hook()` (stm32h5x/soc.c) die Type-C-Dead-Battery-
+  Pull-downs ab, weil die Bedingung dort nur den alten USB-Stack
+  (`CONFIG_USB_DEVICE_DRIVER`) kennt. Ohne Rd auf den CC-Leitungen
+  legt ein Type-C-Host kein VBUS an — das Gerät enumeriert nie.
+  `src/usb_cdc.c` schaltet die Pull-downs deshalb vor `usbd_enable()`
+  wieder ein (`LL_PWR_EnableUCPDDeadBattery()`); upstream ist das nach
+  v4.4.2 gefixt („keep Type-C dead-battery CC pull-downs for the UDC
+  stack“), dann kann der Workaround raus.
+- **Konsole mitlesen:** `picocom -b 115200 /dev/ttyACM0` (ST-LINK-VCP)
+  zeigt nach Reset das Boot-Banner, `CANboss-Gateway startet …`,
+  `USB-Device aktiv … warte auf Host` und beim Anstecken die
+  `USBD: …`-Enumerationsmeldungen. Bleibt `USBD: configuration` aus,
+  kommt am Host nichts an → Kabel/Stecker prüfen.
 
 Braucht man nur ein Kabel (oder soll der USB-Device-Stack raus), geht
 es zurück auf die VCP:

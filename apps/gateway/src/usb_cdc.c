@@ -11,13 +11,19 @@
 
 #include "usb_cdc.h"
 
+#include <errno.h>
+
 #include <zephyr/device.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/usb/usbd.h>
 
+#ifdef CONFIG_SOC_FAMILY_STM32
+#include <stm32_ll_pwr.h>
+#endif
+
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(canboss_usb, LOG_LEVEL_ERR);
+LOG_MODULE_REGISTER(canboss_usb, LOG_LEVEL_INF);
 
 /* Die DFU-Mode-Instanz nie automatisch registrieren (wie in Zephyrs
  * Beispielen); das Gateway bringt ohnehin nur CDC-ACM mit. */
@@ -45,6 +51,10 @@ static atomic_t attach_pending;
 
 static void
 usbd_msg_cb(struct usbd_context* const ctx, const struct usbd_msg* msg) {
+    /* Enumerations-Fortschritt auf der Konsole (ST-Link-VCP):
+     * reset -> configuration -> cdc_acm_line_coding usw. */
+    LOG_INF("USBD: %s", usbd_msg_type_string(msg->type));
+
     if (usbd_can_detect_vbus(ctx)) {
         if (msg->type == USBD_MSG_VBUS_READY) {
             (void)usbd_enable(ctx);
@@ -67,6 +77,22 @@ usbd_msg_cb(struct usbd_context* const ctx, const struct usbd_msg* msg) {
 int
 canboss_usb_init(void) {
     int err;
+
+#if defined(CONFIG_SOC_FAMILY_STM32) && defined(PWR_UCPDR_UCPD_DBDIS)
+    /* Zephyr v4.4.2 schaltet die Type-C-Dead-Battery-Pull-downs in
+     * soc_early_init_hook() ab, weil die Bedingung dort nur den alten
+     * USB-Stack (CONFIG_USB_DEVICE_DRIVER) kennt - mit dem neuen
+     * UDC-Stack fehlt Rd auf den CC-Leitungen, der Host legt kein
+     * VBUS an und das Geraet taucht nie in lsusb auf. Upstream nach
+     * v4.4.2 gefixt ("keep Type-C dead-battery CC pull-downs for the
+     * UDC stack"); bis zum Zephyr-Update hier wieder einschalten. */
+    LL_PWR_EnableUCPDDeadBattery();
+#endif
+
+    if (!device_is_ready(DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)))) {
+        LOG_ERR("UDC-Controller nicht bereit");
+        return -ENODEV;
+    }
 
     err = usbd_add_descriptor(&gw_usbd, &gw_lang);
     if (err == 0) {
@@ -123,6 +149,8 @@ canboss_usb_init(void) {
         }
     }
 
+    LOG_INF("USB-Device aktiv (VID/PID %04x:%04x), warte auf Host", CONFIG_CANBOSS_GW_USB_VID,
+            CONFIG_CANBOSS_GW_USB_PID);
     return 0;
 }
 
