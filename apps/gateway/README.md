@@ -104,14 +104,44 @@ VID/PID/Strings sind über `CANBOSS_GW_USB_*` einstellbar
 (`Kconfig`).
 
 Weil der JSON-Strom nicht mehr auf der VCP liegt, ist die
-**ST-Link-VCP jetzt die Zephyr-Konsole** (115200): Boot-Banner,
-Statusmeldungen des Gateways und der USB-Enumerations-Fortschritt
-(`usbd`-Stack auf INF) laufen dort auf — praktisch für die
-Inbetriebnahme. Nur CDC-ACM bleibt stumm
+**ST-Link-VCP jetzt die Zephyr-Konsole samt Shell** (115200):
+Boot-Banner, Statusmeldungen des Gateways und der
+USB-Enumerations-Fortschritt (`usbd`-Stack auf INF) laufen dort auf —
+praktisch für die Inbetriebnahme. Nur CDC-ACM bleibt stumm
 (`boards/stm32h573i_dk.conf`): `usbd_cdc_acm.c` macht auf INF-Level
 einen Hexdump *jedes* empfangenen Pakets, der mit `LOG_MODE_MINIMAL`
 synchron auf die 115200-Baud-VCP ginge und jeden Firmware-Upload
 ausbremsen würde.
+
+#### Monitoring über die Zephyr-Shell (ST-Link-VCP)
+
+Terminal auf die ST-Link-VCP, 115200 Baud — `Enter` holt den
+`uart:~$`-Prompt (Tab vervollständigt Kommandos und Gerätenamen):
+
+```bash
+picocom -b 115200 /dev/ttyACM0     # oder minicom -D /dev/ttyACM0 -b 115200
+```
+
+| Kommando | zeigt |
+|---|---|
+| `device list` | alle Treiberinstanzen + Init-Status (`can@4000a800`, `usb@40016000`, `cdc_acm_uart0`, …) |
+| `can show can@4000a800` | CAN-Zustand: Bitrate, Modus, Error-Counter, Bus-Status (FDCAN2 = Arduino-Header) |
+| `can stop/start can@4000a800` | CAN-Controller anhalten/starten (Vorsicht: trennt auch CANopen) |
+| `kernel uptime` / `kernel version` | Laufzeit, Zephyr-Version |
+| `kernel threads` | alle Threads mit Zustand und Stack-Verbrauch (CANopen-RX/-Mainline, `usbd`, `sysworkq`, `main`) |
+| `usbd …` | USB-Device-Stack von Hand steuern (`enable`/`disable`, Deskriptoren) — fürs Debugging der Enumeration |
+| `log …` | Log-Backends/Level zur Laufzeit umschalten |
+
+Typischer Bring-up-Blick: nach dem Reset erscheinen Banner,
+`CANboss-Gateway startet (Node-ID 126)`, `USB-Device aktiv … warte auf
+Host` und `CANopen laeuft (gtwa + SLCAN bereit)`; beim Anstecken des
+User-USB-C folgen `USBD: reset` → `USBD: configuration`. Ab da muss
+das Gerät in `lsusb` stehen (`1209:0001`). Danach z. B. mit
+`can show can@4000a800` prüfen, ob der Bus fehlerfrei läuft, und mit
+`kernel threads` die Stacks im Blick behalten.
+
+In der VCP-Variante (`overlays/stlink_vcp.*`) ist die Shell aus —
+dort gehört `usart1` dem NDJSON-Strom.
 
 #### Board taucht nicht in `lsusb` auf?
 

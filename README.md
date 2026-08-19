@@ -111,6 +111,26 @@ ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb GNUARMEMB_TOOLCHAIN_PATH=/usr \
   west build -b stm32h573i_dk CANboss/apps/touch -- -DTOOLCHAIN_HAS_PICOLIBC=ON
 ```
 
+### Konsole & Monitoring am Gateway (Zephyr-Shell)
+
+Beim Gateway auf dem STM32H573I-DK laeuft der NDJSON-Strom am
+User-USB-C — die **ST-Link-VCP ist frei und traegt Zephyr-Konsole und
+-Shell** (115200 Baud):
+
+```bash
+picocom -b 115200 /dev/ttyACM0      # Enter -> uart:~$ (Tab vervollstaendigt)
+```
+
+Nach Reset zeigen Statusmeldungen den Bring-up (Node-ID, "USB-Device
+aktiv ... warte auf Host", "CANopen laeuft", beim Anstecken
+`USBD: reset` -> `USBD: configuration`). Nuetzliche Shell-Kommandos:
+`device list` (Treiber + Init-Status), `can show can@4000a800`
+(Bitrate, Error-Counter, Bus-Status von FDCAN2), `kernel threads`
+(Stack-Verbrauch), `kernel uptime`, `usbd ...` (USB-Stack von Hand
+steuern), `log ...` (Level zur Laufzeit). Details und Troubleshooting
+("Board taucht nicht in lsusb auf?"):
+[apps/gateway/README.md](apps/gateway/README.md).
+
 Details zum Board-Overlay, Flash und Berry: siehe
 [apps/touch/README-zephyr.md](apps/touch/README-zephyr.md).
 POSIX-Build des Monitors: [apps/monitor/README.md](apps/monitor/README.md).
