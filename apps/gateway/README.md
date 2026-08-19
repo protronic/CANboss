@@ -158,6 +158,15 @@ dort gehört `usart1` dem NDJSON-Strom.
   wieder ein (`LL_PWR_EnableUCPDDeadBattery()`); upstream ist das nach
   v4.4.2 gefixt („keep Type-C dead-battery CC pull-downs for the UDC
   stack“), dann kann der Workaround raus.
+- **CAN ohne Gegenstelle blockiert nichts mehr:** FDCAN2 braucht einen
+  **externen Transceiver** am Arduino-Header und mindestens einen
+  zweiten Knoten, der ACKt. Ohne ACK retransmittiert der Controller
+  endlos — früher hing damit jeder sendende Thread fest
+  (`can_send()` ohne Callback wartet unbegrenzt auf TX-Complete),
+  inklusive NDJSON-Poll. Seit dem asynchronen TX in
+  `lib/canopen/can_zephyr.c` bleiben USB-CDC, Shell und NDJSON davon
+  unabhängig; `can show can@4000a800` zeigt die wachsenden
+  Error-Counter.
 - **Konsole mitlesen:** `picocom -b 115200 /dev/ttyACM0` (ST-LINK-VCP)
   zeigt nach Reset das Boot-Banner, `CANboss-Gateway startet …`,
   `USB-Device aktiv … warte auf Host` und beim Anstecken die

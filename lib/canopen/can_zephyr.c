@@ -18,6 +18,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/can.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 
 CAN_MSGQ_DEFINE(cb_can_rx_msgq, 32);
 
@@ -83,6 +84,26 @@ zephyr_close(void) {
     (void)can_stop(cb_can_dev);
 }
 
+/* TX-Complete-Callback (ISR-Kontext): nur Fehler zaehlen. WICHTIG:
+ * ohne Callback wartet can_send() per k_sem_take(..., K_FOREVER) auf
+ * TX-Complete - also auf das Bus-ACK. Auf einem Bus ohne zweiten
+ * Knoten (fehlender Transceiver, offener Stecker) retransmittiert der
+ * Controller endlos und der sendende Thread haengt fuer immer: der
+ * CANopen-Mainline-Thread beim ersten Heartbeat, der jsonapi-Poll-
+ * Thread beim ersten SLCAN-/gtwa-Frame. Deshalb asynchron senden -
+ * "eingereiht" gilt als Erfolg, das Timeout begrenzt nur das Warten
+ * auf einen freien TX-Mailbox-Platz. */
+static atomic_t cb_tx_err_count;
+
+static void
+zephyr_tx_done(const struct device* dev, int error, void* user_data) {
+    ARG_UNUSED(dev);
+    ARG_UNUSED(user_data);
+    if (error != 0) {
+        atomic_inc(&cb_tx_err_count);
+    }
+}
+
 static int
 zephyr_send(const cb_can_frame_t* frame) {
     struct can_frame zf;
@@ -96,7 +117,7 @@ zephyr_send(const cb_can_frame_t* frame) {
     }
     memcpy(zf.data, frame->data, zf.dlc);
 
-    ret = can_send(cb_can_dev, &zf, K_MSEC(100), NULL, NULL);
+    ret = can_send(cb_can_dev, &zf, K_MSEC(100), zephyr_tx_done, NULL);
     if (ret != 0) {
         errno = -ret;
         return -1;
