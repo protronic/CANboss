@@ -153,18 +153,15 @@ dort gehört `usart1` dem NDJSON-Strom.
   STM32-USB_FS, per TCPP03-M20 geschützt) — nicht am ST-LINK-Port
   (CN10). Zwei Kabel: ST-LINK für Flashen/Konsole, User-USB für
   NDJSON/WebSerial. LD7 an heißt nur VBUS, nicht Enumeration.
-- **TCPP + Dead-Battery?** Zephyr v4.4.2 schaltet in
-  `soc_early_init_hook()` die Type-C-Dead-Battery-Pull-downs ab
-  (`CONFIG_USB_DEVICE_DRIVER` fehlt beim neuen UDC-Stack). Zusätzlich
-  muss der TCPP03-M20 auf I2C4 in den NORMAL-Modus (PG0 = Enable).
-  Ohne beides: Konsole zeigt `USBD: Device suspended`, `lsusb` bleibt
-  leer. Beides erledigt zentral
+- **TCPP im NORMAL-Modus?** Der TCPP03-M20 auf I2C4 (PG0 = Enable)
+  muss in den NORMAL-Modus, sonst bleibt D+/D- am CN17 tot — Konsole
+  zeigt dann `USBD: Device suspended`, `lsusb` bleibt leer. Das
+  erledigt zentral
   [`lib/usbc/usbc_h573_dk.c`](../../lib/usbc/usbc_h573_dk.c)
-  (gemeinsam mit `apps/usbdemo`): Rd per `SYS_INIT(PRE_KERNEL_1)`,
-  TCPP vor `usbd_enable()`. Der Rd-Teil ist ein reiner
-  v4.4.2-Workaround (upstream gefixt) und **bleibt nötig, bis das
-  Zephyr-Pin angehoben wird** — der TCPP-Teil ist Board-Realität und
-  bleibt immer.
+  (gemeinsam mit `apps/usbdemo`) vor `usbd_enable()`. Zephyrs
+  Abschalten der Dead-Battery-Pull-downs (v4.4.2) ist dagegen
+  unkritisch — per `apps/usbdemo` verifiziert, der frühere
+  Rd-Workaround ist entfernt.
 - **CAN ohne Gegenstelle blockiert nichts mehr:** FDCAN2 braucht einen
   **externen Transceiver** am Arduino-Header und mindestens einen
   zweiten Knoten, der ACKt. Ohne ACK retransmittiert der Controller

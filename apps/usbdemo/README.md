@@ -45,21 +45,16 @@ berry> exit
 `btn()` = User-Taste PC13. `pin("A".."I", n [, v])` = beliebiger GPIO.
 Nicht anfassen: PA11/PA12 (USB), PG0 (TCPP), PB8/PB9 (I2C4).
 
-## Test: Dead-Battery-Workaround wirklich noetig?
+## Ergebnis: Dead-Battery-Workaround nicht noetig
 
-Diese Demo baut **ohne** den Rd-Workaround aus `lib/usbc`
-(`CANBOSS_USBC_NO_RD_WORKAROUND` in der CMakeLists) - Zephyrs
-`soc_early_init_hook()` schaltet die CC-Pull-downs also ab, nur der
-TCPP03 wird noch in den NORMAL-Modus geschaltet. Auf der
-ST-Link-Konsole steht dann `UCPD Dead-Battery Rd AUS`.
+Mit abgeschaltetem Rd-Hold (Zephyrs `soc_early_init_hook()` schaltet
+die UCPD-Pull-downs ab) enumerierte CN17 trotzdem sauber:
 
-- **Enumeriert CN17 trotzdem** (`lsusb -d 1209:0001`, wichtig: auch
-  mit einem C-auf-C-Kabel testen, nicht nur A-auf-C - ohne Rd liefert
-  ein reiner Type-C-Host normalerweise kein VBUS bzw. zieht es
-  zurueck): Workaround wird nicht gebraucht -> Block in
-  `lib/usbc/usbc_h573_dk.c` und diesen Schalter entfernen.
-- **Enumeriert CN17 nicht mehr**: Workaround bleibt; nur den
-  Schalter hier zuruecknehmen, damit die Demo wieder dem
-  Gateway-Stand entspricht.
+```text
+usb 1-3: New USB device found, idVendor=1209, idProduct=0001
+usb 1-3: Product: CANboss USB Demo
+cdc_acm 1-3:1.0: ttyACM1: USB ACM device
+```
 
-Das Gateway behaelt den Workaround, bis der Test bestanden ist.
+Der Workaround wurde daraufhin ueberall entfernt - noetig ist am
+CN17 nur der TCPP03 im NORMAL-Modus (`lib/usbc/usbc_h573_dk.c`).

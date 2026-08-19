@@ -1,40 +1,15 @@
 /**
- * usbc_h573_dk.c - USB-C-Bring-up CN17 (Dead-Battery-Rd + TCPP03),
+ * usbc_h573_dk.c - USB-C-Bring-up CN17 (TCPP03 in den NORMAL-Modus),
  * siehe usbc_h573_dk.h.
  */
 
 #include "usbc_h573_dk.h"
 
 #include <zephyr/device.h>
-#include <zephyr/init.h>
 #include <zephyr/kernel.h>
-
-#ifdef CONFIG_SOC_FAMILY_STM32
-#include <stm32_ll_pwr.h>
-#endif
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(canboss_usbc, LOG_LEVEL_INF);
-
-#if defined(CONFIG_SOC_SERIES_STM32H5X) && defined(PWR_UCPDR_UCPD_DBDIS) \
-    && !defined(CANBOSS_USBC_NO_RD_WORKAROUND)
-/* Gegenspieler zu soc_early_init_hook() (Zephyr v4.4.2): Rd auf den
- * CC-Leitungen halten, sonst sieht ein Type-C-Host keinen Sink.
- *
- * Testschalter: eine App kann den Workaround mit der Compile-
- * Definition CANBOSS_USBC_NO_RD_WORKAROUND abschalten, um auf der
- * Hardware zu pruefen, ob er wirklich noch gebraucht wird -
- * canboss_usbc_prepare() loggt den Zustand ("Rd an/AUS"). Faellt der
- * Test positiv aus (Enumeration klappt mit "Rd AUS", auch am
- * C-auf-C-Kabel), kann der ganze Block hier raus. */
-static int
-usbc_keep_cc_rd(void) {
-    LL_PWR_EnableUCPDDeadBattery();
-    return 0;
-}
-
-SYS_INIT(usbc_keep_cc_rd, PRE_KERNEL_1, 0);
-#endif
 
 #if defined(CONFIG_BOARD_STM32H573I_DK)
 
@@ -55,10 +30,6 @@ canboss_usbc_prepare(void) {
     uint8_t ack = 0;
     uint8_t flag = 0;
     int err;
-
-#if defined(PWR_UCPDR_UCPD_DBDIS)
-    LOG_INF("UCPD Dead-Battery Rd %s", LL_PWR_IsEnabledUCPDDeadBattery() ? "an" : "AUS");
-#endif
 
     if (device_is_ready(en)) {
         (void)gpio_pin_configure(en, 0, GPIO_OUTPUT_ACTIVE); /* PG0 = TCPP-Enable */
