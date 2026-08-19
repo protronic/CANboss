@@ -19,6 +19,17 @@
 	};
 };
 
+/*
+ * Das Board-DTS aktiviert FDCAN1 standardmaessig auf PA11/PA12.
+ * Dieselben Pins braucht USB_DRD_FS als D-/D+. Sobald CONFIG_CAN=y
+ * ist, setzt der FDCAN1-Treiber die Pins beim Boot auf AF9 um und
+ * trennt damit USB vom Stecker. Das Gateway nutzt FDCAN2 auf PB5/PB6,
+ * daher muss FDCAN1 hier explizit aus sein.
+ */
+&fdcan1 {
+	status = "disabled";
+};
+
 &fdcan2 {
 	status = "okay";
 	pinctrl-0 = <&fdcan2_rx_pb5 &fdcan2_tx_pb6>;

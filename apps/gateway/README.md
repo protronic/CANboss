@@ -162,6 +162,16 @@ dort gehört `usart1` dem NDJSON-Strom.
   Abschalten der Dead-Battery-Pull-downs (v4.4.2) ist dagegen
   unkritisch — per `apps/usbdemo` verifiziert, der frühere
   Rd-Workaround ist entfernt.
+- **FDCAN1 muss aus sein:** Das Board-DTS aktiviert FDCAN1 auf
+  **PA11/PA12**. Das sind gleichzeitig USB D-/D+. Mit `CONFIG_CAN=y`
+  setzt der FDCAN1-Treiber diese Pins beim Boot auf CAN AF9; der
+  USB-Pull-up bleibt sichtbar, aber Bus-Reset und Enumeration erreichen
+  den USB-Controller nicht. Das Gateway-Overlay deaktiviert deshalb
+  FDCAN1 explizit und nutzt nur FDCAN2 auf PB5/PB6.
+- **USB-Takt:** CN17 nutzt HSI48 über `USBSEL=3`; der STM32-UDC-Treiber
+  prüft mit `CONFIG_UDC_STM32_CLOCK_CHECK=y` auf exakt 48 MHz. Beim
+  Pin-Konflikt waren HSI48 `on/ready` und USBSEL korrekt — der Takt war
+  daher nicht die Ursache.
 - **CAN ohne Gegenstelle blockiert nichts mehr:** FDCAN2 braucht einen
   **externen Transceiver** am Arduino-Header und mindestens einen
   zweiten Knoten, der ACKt. Ohne ACK retransmittiert der Controller
