@@ -34,6 +34,7 @@ add_dependencies(app usbdemo_berry_gen)
 target_sources(app PRIVATE
     src/main.c
     src/usb.c
+    ${REPO_ROOT}/lib/usbc/usbc_h573_dk.c
     src/berry_gpio.c
     src/berry_port.c
     ${berry_core_sources}
@@ -41,4 +42,5 @@ target_sources(app PRIVATE
 )
 
 target_include_directories(app BEFORE PRIVATE ${BERRY_OD_DIR} src)
+target_include_directories(app PRIVATE ${REPO_ROOT}/lib/usbc)
 target_include_directories(app PRIVATE ${BERRY_DIR}/src)

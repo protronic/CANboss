@@ -158,8 +158,13 @@ dort gehört `usart1` dem NDJSON-Strom.
   (`CONFIG_USB_DEVICE_DRIVER` fehlt beim neuen UDC-Stack). Zusätzlich
   muss der TCPP03-M20 auf I2C4 in den NORMAL-Modus (PG0 = Enable).
   Ohne beides: Konsole zeigt `USBD: Device suspended`, `lsusb` bleibt
-  leer. `src/usb_cdc.c` holt Rd früh zurück und schaltet den TCPP
-  vor `usbd_enable()` ein. Upstream-Fix für Rd kommt nach v4.4.2.
+  leer. Beides erledigt zentral
+  [`lib/usbc/usbc_h573_dk.c`](../../lib/usbc/usbc_h573_dk.c)
+  (gemeinsam mit `apps/usbdemo`): Rd per `SYS_INIT(PRE_KERNEL_1)`,
+  TCPP vor `usbd_enable()`. Der Rd-Teil ist ein reiner
+  v4.4.2-Workaround (upstream gefixt) und **bleibt nötig, bis das
+  Zephyr-Pin angehoben wird** — der TCPP-Teil ist Board-Realität und
+  bleibt immer.
 - **CAN ohne Gegenstelle blockiert nichts mehr:** FDCAN2 braucht einen
   **externen Transceiver** am Arduino-Header und mindestens einen
   zweiten Knoten, der ACKt. Ohne ACK retransmittiert der Controller

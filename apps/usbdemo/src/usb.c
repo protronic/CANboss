@@ -6,77 +6,19 @@
 #include "usb.h"
 
 #include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/uart.h>
-#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/shell/shell_uart.h>
 #include <zephyr/sys/sys_io.h>
 #include <zephyr/usb/usbd.h>
 
-#ifdef CONFIG_SOC_FAMILY_STM32
-#include <stm32_ll_pwr.h>
-#endif
+#include "usbc_h573_dk.h" /* Dead-Battery-Rd + TCPP03 (CN17) */
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usbdemo_usb, LOG_LEVEL_INF);
 
 #define USB_DRD_BCDR 0x40016058U
-
-#if defined(CONFIG_SOC_SERIES_STM32H5X) && defined(PWR_UCPDR_UCPD_DBDIS)
-static int
-usbdemo_keep_cc_rd(void) {
-    LL_PWR_EnableUCPDDeadBattery();
-    return 0;
-}
-
-SYS_INIT(usbdemo_keep_cc_rd, PRE_KERNEL_1, 0);
-#endif
-
-#if defined(CONFIG_BOARD_STM32H573I_DK)
-#define TCPP_I2C_ADDR 0x34
-#define TCPP_REG_CTRL 0x00
-#define TCPP_REG_ACK  0x01
-#define TCPP_REG_FLAG 0x02
-#define TCPP_MODE_NORMAL 0x10
-
-static void
-usbdemo_enable_tcpp(void) {
-    const struct device* en = DEVICE_DT_GET(DT_NODELABEL(gpiog));
-    const struct device* i2c = DEVICE_DT_GET(DT_NODELABEL(i2c4));
-    uint8_t ack = 0;
-    uint8_t flag = 0;
-    int err;
-
-    if (device_is_ready(en)) {
-        (void)gpio_pin_configure(en, 0, GPIO_OUTPUT_ACTIVE);
-    }
-
-    k_msleep(10);
-
-    if (!device_is_ready(i2c)) {
-        LOG_ERR("TCPP: I2C4 nicht bereit");
-        return;
-    }
-
-    err = i2c_reg_write_byte(i2c, TCPP_I2C_ADDR, TCPP_REG_CTRL, TCPP_MODE_NORMAL);
-    if (err) {
-        LOG_ERR("TCPP: I2C-Write fehlgeschlagen (%d)", err);
-        return;
-    }
-
-    (void)i2c_reg_read_byte(i2c, TCPP_I2C_ADDR, TCPP_REG_ACK, &ack);
-    (void)i2c_reg_read_byte(i2c, TCPP_I2C_ADDR, TCPP_REG_FLAG, &flag);
-    LOG_INF("TCPP: NORMAL (ack=0x%02x flag=0x%02x)%s", ack, flag,
-            (flag & 0x20) ? " VBUS_OK" : " kein VBUS");
-}
-#else
-static void
-usbdemo_enable_tcpp(void) {
-}
-#endif
 
 static const char* const class_blocklist[] = {
     "dfu_dfu",
@@ -147,13 +89,7 @@ int
 usbdemo_usb_init(void) {
     int err;
 
-#if defined(CONFIG_SOC_SERIES_STM32H5X) && defined(PWR_UCPDR_UCPD_DBDIS)
-    LL_PWR_EnableUCPDDeadBattery();
-    LOG_INF("UCPD Dead-Battery Rd %s",
-            LL_PWR_IsEnabledUCPDDeadBattery() ? "an" : "AUS");
-#endif
-
-    usbdemo_enable_tcpp();
+    (void)canboss_usbc_prepare();
 
     if (!device_is_ready(DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)))) {
         LOG_ERR("UDC nicht bereit");

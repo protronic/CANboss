@@ -43,12 +43,17 @@ target_sources(app PRIVATE
     ${CANOPEN_DIR}/309/CO_gateway_ascii.c
 )
 
-# USB-Device (CDC-ACM) als NDJSON-Transport, z.B. stm32h573i_dk
-target_sources_ifdef(CONFIG_CANBOSS_GW_USB app PRIVATE src/usb_cdc.c)
+# USB-Device (CDC-ACM) als NDJSON-Transport, z.B. stm32h573i_dk;
+# lib/usbc: Dead-Battery-Rd + TCPP03-Bring-up fuer CN17 (H573I-DK)
+target_sources_ifdef(CONFIG_CANBOSS_GW_USB app PRIVATE
+    src/usb_cdc.c
+    ${CBLIB}/usbc/usbc_h573_dk.c
+)
 
 target_include_directories(app PRIVATE
     src
     ${CBLIB}/jsonapi
+    ${CBLIB}/usbc
     ${CBLIB}/canopen
     ${CBLIB}/canopen/port
     ${CANOPEN_DIR}
