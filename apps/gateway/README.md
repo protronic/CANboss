@@ -149,19 +149,17 @@ dort gehört `usart1` dem NDJSON-Strom.
 
 #### Board taucht nicht in `lsusb` auf?
 
-- **Richtiger Stecker?** Das Gateway hängt am **User-USB-C** (am
-  STM32-USB_FS, per TCPP01 geschützt) — nicht am ST-LINK-Port. Es
-  braucht also zwei Kabel: ST-LINK für Flashen/Konsole, User-USB für
-  NDJSON/WebSerial.
-- **Dead-Battery-Workaround aktiv?** Zephyr v4.4.2 schaltet in
-  `soc_early_init_hook()` (stm32h5x/soc.c) die Type-C-Dead-Battery-
-  Pull-downs ab, weil die Bedingung dort nur den alten USB-Stack
-  (`CONFIG_USB_DEVICE_DRIVER`) kennt. Ohne Rd auf den CC-Leitungen
-  legt ein Type-C-Host kein VBUS an — das Gerät enumeriert nie.
-  `src/usb_cdc.c` schaltet die Pull-downs deshalb vor `usbd_enable()`
-  wieder ein (`LL_PWR_EnableUCPDDeadBattery()`); upstream ist das nach
-  v4.4.2 gefixt („keep Type-C dead-battery CC pull-downs for the UDC
-  stack“), dann kann der Workaround raus.
+- **Richtiger Stecker?** Das Gateway hängt am **User-USB-C CN17** (am
+  STM32-USB_FS, per TCPP03-M20 geschützt) — nicht am ST-LINK-Port
+  (CN10). Zwei Kabel: ST-LINK für Flashen/Konsole, User-USB für
+  NDJSON/WebSerial. LD7 an heißt nur VBUS, nicht Enumeration.
+- **TCPP + Dead-Battery?** Zephyr v4.4.2 schaltet in
+  `soc_early_init_hook()` die Type-C-Dead-Battery-Pull-downs ab
+  (`CONFIG_USB_DEVICE_DRIVER` fehlt beim neuen UDC-Stack). Zusätzlich
+  muss der TCPP03-M20 auf I2C4 in den NORMAL-Modus (PG0 = Enable).
+  Ohne beides: Konsole zeigt `USBD: Device suspended`, `lsusb` bleibt
+  leer. `src/usb_cdc.c` holt Rd früh zurück und schaltet den TCPP
+  vor `usbd_enable()` ein. Upstream-Fix für Rd kommt nach v4.4.2.
 - **CAN ohne Gegenstelle blockiert nichts mehr:** FDCAN2 braucht einen
   **externen Transceiver** am Arduino-Header und mindestens einen
   zweiten Knoten, der ACKt. Ohne ACK retransmittiert der Controller

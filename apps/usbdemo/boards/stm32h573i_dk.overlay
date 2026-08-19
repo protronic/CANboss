@@ -1,0 +1,12 @@
+/*
+ * USB-Demo: CDC-ACM am User-USB (CN17). Konsole/Shell bleiben auf
+ * der ST-Link-VCP (usart1). Eine zweite Shell startet auf der CDC,
+ * sobald der Host DTR setzt.
+ */
+
+&zephyr_udc0 {
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+		label = "CANboss USB Demo";
+	};
+};

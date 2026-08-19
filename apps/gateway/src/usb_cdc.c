@@ -14,7 +14,10 @@
 #include <errno.h>
 
 #include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/usb/usbd.h>
 
@@ -24,6 +27,68 @@
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(canboss_usb, LOG_LEVEL_INF);
+
+#if defined(CONFIG_SOC_SERIES_STM32H5X) && defined(PWR_UCPDR_UCPD_DBDIS)
+/* Zephyr v4.4.2 schaltet die Rd-Pull-downs in soc_early_init_hook() ab,
+ * weil die Bedingung nur CONFIG_USB_DEVICE_DRIVER kennt. Ohne Rd sieht
+ * ein Type-C-Host keinen Sink. Vor jedem USB-Init wieder einschalten. */
+static int
+canboss_usb_keep_cc_rd(void) {
+    LL_PWR_EnableUCPDDeadBattery();
+    return 0;
+}
+
+SYS_INIT(canboss_usb_keep_cc_rd, PRE_KERNEL_1, 0);
+#endif
+
+#if defined(CONFIG_BOARD_STM32H573I_DK)
+/* STM32H573I-DK CN17: TCPP03-M20 (TCPP0203) auf I2C4 @ 0x34, VCC an PG0.
+ * Ohne NORMAL-Modus bleiben die CC-Schalter zu - der Host legt ggf. VBUS
+ * an (LD7), sieht aber kein Device auf D+/D-. TinyUSB/Cube machen dasselbe. */
+#define CANBOSS_TCPP_I2C_ADDR 0x34
+#define CANBOSS_TCPP_REG_CTRL 0x00
+#define CANBOSS_TCPP_REG_ACK  0x01
+#define CANBOSS_TCPP_REG_FLAG 0x02
+#define CANBOSS_TCPP_MODE_NORMAL 0x10
+
+static void
+canboss_usb_enable_tcpp(void) {
+    const struct device* en = DEVICE_DT_GET(DT_NODELABEL(gpiog));
+    const struct device* i2c = DEVICE_DT_GET(DT_NODELABEL(i2c4));
+    uint8_t ack = 0;
+    uint8_t flag = 0;
+    int err;
+
+    if (device_is_ready(en)) {
+        (void)gpio_pin_configure(en, 0, GPIO_OUTPUT_ACTIVE);
+    } else {
+        LOG_ERR("TCPP: GPIOG nicht bereit");
+    }
+
+    /* VCC-Rampe des TCPP, bevor I2C spricht */
+    k_msleep(10);
+
+    if (!device_is_ready(i2c)) {
+        LOG_ERR("TCPP: I2C4 nicht bereit");
+        return;
+    }
+
+    err = i2c_reg_write_byte(i2c, CANBOSS_TCPP_I2C_ADDR, CANBOSS_TCPP_REG_CTRL,
+                             CANBOSS_TCPP_MODE_NORMAL);
+    if (err) {
+        LOG_ERR("TCPP: I2C-Write fehlgeschlagen (%d)", err);
+        return;
+    }
+
+    (void)i2c_reg_read_byte(i2c, CANBOSS_TCPP_I2C_ADDR, CANBOSS_TCPP_REG_ACK, &ack);
+    (void)i2c_reg_read_byte(i2c, CANBOSS_TCPP_I2C_ADDR, CANBOSS_TCPP_REG_FLAG, &flag);
+    LOG_INF("TCPP: NORMAL (ack=0x%02x flag=0x%02x)", ack, flag);
+}
+#else
+static void
+canboss_usb_enable_tcpp(void) {
+}
+#endif
 
 /* Die DFU-Mode-Instanz nie automatisch registrieren (wie in Zephyrs
  * Beispielen); das Gateway bringt ohnehin nur CDC-ACM mit. */
@@ -78,16 +143,13 @@ int
 canboss_usb_init(void) {
     int err;
 
-#if defined(CONFIG_SOC_FAMILY_STM32) && defined(PWR_UCPDR_UCPD_DBDIS)
-    /* Zephyr v4.4.2 schaltet die Type-C-Dead-Battery-Pull-downs in
-     * soc_early_init_hook() ab, weil die Bedingung dort nur den alten
-     * USB-Stack (CONFIG_USB_DEVICE_DRIVER) kennt - mit dem neuen
-     * UDC-Stack fehlt Rd auf den CC-Leitungen, der Host legt kein
-     * VBUS an und das Geraet taucht nie in lsusb auf. Upstream nach
-     * v4.4.2 gefixt ("keep Type-C dead-battery CC pull-downs for the
-     * UDC stack"); bis zum Zephyr-Update hier wieder einschalten. */
+#if defined(CONFIG_SOC_SERIES_STM32H5X) && defined(PWR_UCPDR_UCPD_DBDIS)
     LL_PWR_EnableUCPDDeadBattery();
+    LOG_INF("UCPD Dead-Battery Rd %s",
+            LL_PWR_IsEnabledUCPDDeadBattery() ? "an" : "AUS");
 #endif
+
+    canboss_usb_enable_tcpp();
 
     if (!device_is_ready(DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)))) {
         LOG_ERR("UDC-Controller nicht bereit");

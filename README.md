@@ -10,6 +10,7 @@ ohne Hardware ueber `vcan0` testen laesst.
 |---|---|---|
 | [apps/monitor](apps/monitor/) | Terminal-Parametermonitor (TUI, Port von CANboss-rs) + Berry-REPL | native_sim, POSIX (`make`) |
 | [apps/gateway](apps/gateway/) | NDJSON-Gateway fuer Webapps (gtwa/CiA 309-3, PDO-Monitor, Firmware-Streaming, SLCAN-Bruecke) + WebSerial-Webapp; auf dem DK ueber USB-CDC-ACM | native_sim, stm32h573i_dk |
+| [apps/usbdemo](apps/usbdemo/) | USB-Bring-up: CDC-ACM + Zephyr-Shell + Berry-GPIO (kein CAN) | stm32h573i_dk |
 | [apps/monitor-py](apps/monitor-py/) | Komfort-Monitor in Python (Textual: Maus, Filter, Schreib-Dialog) | Python 3.10+ (`pip install -e .`) |
 | [apps/touch](apps/touch/) | LVGL-Touchpanel mit EDS-generierten Screens + Berry-Scripting | native_sim, stm32h573i_dk |
 | [apps/nodes/demo_io](apps/nodes/demo_io/) | Demo-Knoten 16 "IO-Modul" mit Prozesswert-Simulation | native_sim |
@@ -96,6 +97,8 @@ unset ZEPHYR_TOOLCHAIN_VARIANT     # Default = zephyr/gnu aus dem SDK
 west build -b stm32h573i_dk CANboss/apps/touch -d build
 # NDJSON-Gateway fuers Web-Frontend (haengt am USB-Stecker des Boards):
 west build -b stm32h573i_dk CANboss/apps/gateway -d build-gw-h573
+# USB-Bring-up ohne CAN (CN17 + Berry-GPIO):
+west build -b stm32h573i_dk CANboss/apps/usbdemo -d build-usbdemo-h573
 # Arch-Paket legt nur stm32_programmer_cli (klein) in PATH; Zephyr
 # erwartet STM32_Programmer_CLI — deshalb das SDK-bin-Verzeichnis vorne:
 export PATH=/opt/stm32cubeprog/bin:$PATH
