@@ -45,7 +45,7 @@
 &zephyr_udc0 {
 	cdc_acm_uart0: cdc_acm_uart0 {
 		compatible = "zephyr,cdc-acm-uart";
-		label = "CANboss Gateway NDJSON";
+		label = "CANboss Gateway NDJSON/SLCAN";
 		rx-fifo-size = <2048>;
 		tx-fifo-size = <2048>;
 	};

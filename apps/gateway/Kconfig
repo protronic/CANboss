@@ -57,15 +57,20 @@ if CANBOSS_GW_USB
 
 config CANBOSS_GW_USB_VID
 	hex "USB Vendor ID"
-	default 0x1209
+	default 0x0483
 	help
-	  Default 0x1209 (pid.codes, der freie VID-Pool fuer Open-Source-
-	  Hardware) zusammen mit der Test-PID 0x0001. Fuer Geraete, die das
-	  Haus verlassen, hier die eigene, registrierte VID/PID eintragen.
+	  STMicroelectronics (0x0483), damit WebSerial-Filter wie in LSM6
+	  ({ usbVendorId: 0x0483 }) den User-USB-Port finden. Die
+	  ST-LINK-VCP hat dieselbe VID (PID 0x374e) — im Picker den
+	  Eintrag mit Produktstring "CANboss Gateway …" nehmen, nicht
+	  den ST-LINK. lsusb ohne -v kommt aus usb.ids zum VID/PID-Paar.
 
 config CANBOSS_GW_USB_PID
 	hex "USB Product ID"
-	default 0x0001
+	default 0x5740
+	help
+	  STM32 Virtual COM Port (STs CDC-ACM-PID). Nicht 0x374e, das
+	  ist die ST-LINK-VCP. usbdemo bleibt bei 1209:0001.
 
 config CANBOSS_GW_USB_MANUFACTURER
 	string "USB-Herstellerstring"
@@ -73,10 +78,12 @@ config CANBOSS_GW_USB_MANUFACTURER
 
 config CANBOSS_GW_USB_PRODUCT
 	string "USB-Produktstring"
-	default "CANboss Gateway"
+	default "CANboss Gateway SLCAN"
 	help
-	  Unter diesem Namen taucht der Port im Browser-Dialog von
-	  navigator.serial.requestPort() auf.
+	  iProduct: WebSerial-Dialog, lsusb -v, udev ATTRS{product} und
+	  /dev/serial/by-id/usb-Protronic_GmbH_CANboss_Gateway_SLCAN_*.
+	  slcand sollte diesen by-id-Pfad nehmen, nicht /dev/ttyACM0
+	  (das ist am H573I-DK die ST-LINK-VCP).
 
 config CANBOSS_GW_USB_MAX_POWER
 	int "bMaxPower in 2-mA-Schritten"

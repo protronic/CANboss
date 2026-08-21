@@ -37,7 +37,7 @@ USBD_DESC_LANG_DEFINE(gw_lang);
 USBD_DESC_MANUFACTURER_DEFINE(gw_mfr, CONFIG_CANBOSS_GW_USB_MANUFACTURER);
 USBD_DESC_PRODUCT_DEFINE(gw_product, CONFIG_CANBOSS_GW_USB_PRODUCT);
 USBD_DESC_SERIAL_NUMBER_DEFINE(gw_sn);
-USBD_DESC_CONFIG_DEFINE(gw_fs_cfg_desc, "CANboss Gateway (NDJSON)");
+USBD_DESC_CONFIG_DEFINE(gw_fs_cfg_desc, "CANboss Gateway (NDJSON/SLCAN)");
 
 /* Bus-powered gemeldet: das DK kann sowohl ueber ST-Link als auch ueber
  * den USB-FS-Stecker versorgt werden - die Angabe passt in beiden

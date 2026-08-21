@@ -47,13 +47,19 @@ Fünf Funktionsblöcke:
    Frames (`T`/`R`) meldet die Brücke als Fehler — die CAN-Schicht ist
    bewusst auf klassische 11-Bit-Frames beschränkt (CiA 301).
    Ein Host, der nur SLCAN spricht, sieht auch nur SLCAN-Antworten —
-   der Port funktioniert damit direkt an `slcand`/python-can:
+   der Port funktioniert damit direkt an `slcand`/python-can. Nicht
+   `/dev/ttyACM0` nehmen (am H573I-DK ist das die ST-LINK-VCP), sondern
+   den User-USB-Port per Produktstring:
 
    ```bash
-   sudo slcand -o -c /dev/ttyACM0 can0 && sudo ip link set can0 up
+   sudo slcand -o -c /dev/serial/by-id/usb-Protronic_GmbH_CANboss_Gateway_SLCAN_*-if00 can0
+   sudo ip link set can0 up
    candump can0        # CANopen-Verkehr live, waehrend das Gateway
                        # weiter als CANopen-Master arbeitet
    ```
+
+   Optional legt [`udev/99-canboss-gateway.rules`](udev/99-canboss-gateway.rules)
+   das Symlink `/dev/ttyCANboss` an.
 
    Protokolldetails: [`lib/jsonapi/jsonapi_slcan.h`](../../lib/jsonapi/jsonapi_slcan.h).
 
@@ -96,12 +102,16 @@ west flash -d build-gw-h573
 Der NDJSON-Strom läuft über den **USB-Stecker des Boards**
 (USB_DRD_FS an PA11/PA12, Board-Label `zephyr_udc0`) als CDC-ACM:
 Kabel an den Rechner, `navigator.serial.requestPort()` zeigt
-„CANboss Gateway“, fertig — kein ST-Link im Datenpfad, keine
-Treiberinstallation. Das Board meldet sich mit VID/PID `1209:0001`
-(pid.codes-Testbereich) und einer Seriennummer aus der STM32-UID, so
-dass mehrere Gateways am selben Rechner unterscheidbar bleiben;
-VID/PID/Strings sind über `CANBOSS_GW_USB_*` einstellbar
-(`Kconfig`).
+„CANboss Gateway SLCAN“, fertig — kein ST-Link im Datenpfad, keine
+Treiberinstallation. Das Board meldet sich mit VID/PID `0483:5740`
+(STMicroelectronics / STM32 Virtual COM Port), damit Filter wie
+`{ usbVendorId: 0x0483 }` in LSM6 den Port sehen, Produktstring
+`CANboss Gateway SLCAN` und einer Seriennummer aus der STM32-UID.
+Die ST-LINK-VCP ist ebenfalls VID `0483` (PID `374e`) — im
+WebSerial-Dialog den CANboss-Eintrag wählen, nicht den ST-LINK.
+`lsusb` ohne `-v` zeigt den usb.ids-Namen zum VID/PID-Paar; die
+Firmware-Strings stehen in `lsusb -v` und in `/dev/serial/by-id/`.
+VID/PID/Strings sind über `CANBOSS_GW_USB_*` einstellbar (`Kconfig`).
 
 Weil der JSON-Strom nicht mehr auf der VCP liegt, ist die
 **ST-Link-VCP jetzt die Zephyr-Konsole samt Shell** (115200):
@@ -140,7 +150,7 @@ Host`, `Berry-REPL bereit`, `CANopen laeuft (gtwa + SLCAN bereit)` und
 zeigt die letzte sichtbare, in welchem Schritt es hängt — bitte dann
 mit angeschlossenem Terminal den Reset-Taster drücken und die Ausgabe
 mitnehmen. Ab da muss
-das Gerät in `lsusb` stehen (`1209:0001`). Danach z. B. mit
+das Gerät in `lsusb` stehen (`0483:5740`). Danach z. B. mit
 `can show can@4000a800` prüfen, ob der Bus fehlerfrei läuft, und mit
 `kernel threads` die Stacks im Blick behalten.
 
@@ -190,8 +200,8 @@ dort gehört `usart1` dem NDJSON-Strom.
 
   ```bash
   ls -l /dev/serial/by-id/
-  # ...STLINK-V3EC...-if02      -> Konsole/Shell (picocom hier drauf)
-  # ...CANboss_Gateway...-if00  -> NDJSON/WebSerial/slcand
+  # ...STLINK-V3EC...-if02                 -> Konsole/Shell (picocom hier drauf)
+  # ...CANboss_Gateway_SLCAN...-if00       -> NDJSON/WebSerial/slcand
   picocom -b 115200 /dev/serial/by-id/usb-STMicroelectronics_STLINK-V3EC_*-if02
   ```
 - **Konsole mitlesen:** `picocom -b 115200 /dev/ttyACM0` (ST-LINK-VCP)

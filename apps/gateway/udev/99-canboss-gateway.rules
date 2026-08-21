@@ -1,0 +1,7 @@
+# CANboss Gateway am User-USB (CDC-ACM: NDJSON + SLCAN).
+# sudo cp 99-canboss-gateway.rules /etc/udev/rules.d/
+# sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# VID 0483 ist ST; PID 5740 ist STM32 Virtual COM Port. Die ST-LINK-VCP
+# ist 0483:374e — deshalb zusaetzlich auf den Produktstring matchen.
+ACTION=="add", SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", ATTRS{manufacturer}=="Protronic GmbH", ATTRS{product}=="CANboss Gateway SLCAN", SYMLINK+="ttyCANboss", GROUP="uucp", MODE="0660"
