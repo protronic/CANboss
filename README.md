@@ -141,21 +141,25 @@ POSIX-Build des Monitors: [apps/monitor/README.md](apps/monitor/README.md).
 ### ODs zur Buildzeit aus den EDS-Dateien generieren
 
 Die Objektverzeichnisse unter `lib/od/` werden mit dem EDSSharp-CLI aus
-dem [CANopenEditor](https://github.com/protronic/CANopenEditor) erzeugt
-(Release `cli-v4.2.3-protronic.1`, Workflow "EDSSharp CLI Release").
-Liegt das Tool vor, generieren die CMake-Builds die ODs bei jeder
-EDS-Aenderung automatisch neu (siehe `lib/od/od_codegen.cmake`):
+dem [CANopenEditor](https://github.com/protronic/CANopenEditor) erzeugt.
+CMake laedt auf Linux beim Configure das aktuelle linux-x64-Binary, falls
+es noch nicht unter `tools/edssharp/` liegt:
+
+[EDSSharp-linux-x64.tar.gz](https://github.com/protronic/CANopenEditor/releases/latest/download/EDSSharp-linux-x64.tar.gz)
+
+Liegt das Tool vor, generieren die Builds die ODs bei jeder EDS-Aenderung
+neu (`lib/od/od_codegen.cmake`). Manuell:
 
 ```bash
-CANboss/tools/get-edssharp.sh     # laedt das Release-Binary nach tools/edssharp/
-west build ...                    # "OD-Codegen aus eds/*.eds mit ..." im Log
+CANboss/tools/get-edssharp.sh           # latest nach tools/edssharp/
+CANboss/tools/get-edssharp.sh --update  # erneut vom latest-Release
+west build ...                          # "OD-Codegen aus eds/*.eds mit ..."
 ```
 
-Alternativ zeigt die Umgebungsvariable `EDSSHARP` auf ein beliebiges
-EDSSharp-Binary (z.B. lokaler dotnet-Build). Ohne Tool bauen die
-eingecheckten Dateien aus `lib/od/` — der Fallback haelt CI und
-Container ohne .NET am Laufen. Nach EDS-Aenderungen die eingecheckten
-Dateien mit `--export-project` aktualisieren:
+Abschalten: `-DCANBOSS_FETCH_EDSSHARP=OFF`. Alternativ zeigt `EDSSHARP`
+auf ein beliebiges Binary (z.B. lokaler dotnet-Build). Ohne Tool bauen die
+eingecheckten Dateien aus `lib/od/` — der Fallback haelt CI ohne Netz am
+Laufen. Nach EDS-Aenderungen die eingecheckten Dateien aktualisieren:
 
 ```bash
 tools/edssharp/EDSSharp --export-project --infile eds/demo_io.eds \
