@@ -53,6 +53,7 @@ typedef struct {
     uint16_t selected_obj;
     uint16_t selected_sub; /* Position innerhalb des Objekts */
     uint16_t obj_scroll;
+    uint16_t sub_scroll;
     char filter[CB_FILTER_MAX];
     bool filter_mode;
     bool write_mode;
@@ -130,6 +131,7 @@ apply_obj_filter(cb_ui_t* ui) {
         ui->selected_obj = ui->obj_list_len > 0 ? (uint16_t)(ui->obj_list_len - 1) : 0;
     }
     ui->selected_sub = 0;
+    ui->sub_scroll = 0;
 }
 
 static const cb_obj_t*
@@ -176,6 +178,7 @@ open_node(cb_ui_t* ui, uint16_t registry_idx) {
     ui->selected_obj = 0;
     ui->selected_sub = 0;
     ui->obj_scroll = 0;
+    ui->sub_scroll = 0;
     ui->auto_refresh = false;
     apply_obj_filter(ui);
     ui->screen = SCREEN_MONITOR;
@@ -433,7 +436,17 @@ draw_monitor(cb_ui_t* ui) {
     tui_put(1, left_w + 2, CB_ST_CYAN | CB_ST_BOLD, line);
 
     if (obj != NULL) {
-        for (uint16_t s = 0; s < obj->dp_count && (int)s + 2 < list_h - 1; s++) {
+        /* Rahmen + Spaltenkopf belegen die ersten beiden Zeilen */
+        int sub_visible = list_h - 3;
+        if (ui->selected_sub < ui->sub_scroll) {
+            ui->sub_scroll = ui->selected_sub;
+        }
+        if (sub_visible > 0 && ui->selected_sub >= ui->sub_scroll + sub_visible) {
+            ui->sub_scroll = (uint16_t)(ui->selected_sub - sub_visible + 1);
+        }
+
+        for (int row = 0; row < sub_visible && ui->sub_scroll + row < obj->dp_count; row++) {
+            uint16_t s = (uint16_t)(ui->sub_scroll + row);
             const cb_dp_t* dp = &ui->node->dps[obj->dp_first + s];
             const char* value = ui->values[obj->dp_first + s];
             char shown[CB_VALUE_MAX + 12];
@@ -446,7 +459,7 @@ draw_monitor(cb_ui_t* ui) {
             }
             snprintf(line, sizeof(line), "%02X   %-28.28s %-10s %-4s %s", dp->sub, dp->name,
                      cb_dtype_name((cb_dtype_t)dp->dtype), cb_access_name((cb_access_t)dp->access), shown);
-            tui_put(2 + s, left_w + 2, s == ui->selected_sub ? (CB_ST_YELLOW | CB_ST_BOLD) : CB_ST_NONE, line);
+            tui_put(2 + row, left_w + 2, s == ui->selected_sub ? (CB_ST_YELLOW | CB_ST_BOLD) : CB_ST_NONE, line);
         }
     }
 
@@ -621,12 +634,14 @@ handle_monitor_key(cb_ui_t* ui, cb_key_t key) {
             if (ui->selected_obj > 0) {
                 ui->selected_obj--;
                 ui->selected_sub = 0;
+                ui->sub_scroll = 0;
             }
             break;
         case CB_KEY_DOWN:
             if (ui->selected_obj + 1 < ui->obj_list_len) {
                 ui->selected_obj++;
                 ui->selected_sub = 0;
+                ui->sub_scroll = 0;
             }
             break;
         case CB_KEY_LEFT:
