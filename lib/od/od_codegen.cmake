@@ -69,7 +69,8 @@ function(canboss_od_add name)
             BYPRODUCTS ${gen_dir}/${name}.json
             COMMAND ${EDSSHARP} --export-project
                     --infile ${REPO_ROOT}/eds/${name}.eds
-                    --outdir ${gen_dir} --od ${name} --canopennode v4
+                    --outdir ${gen_dir} --od ${name} --odname ${name}
+                    --canopennode v4
             DEPENDS ${REPO_ROOT}/eds/${name}.eds
             COMMENT "EDSSharp: eds/${name}.eds -> ${name}.c/.h"
         )

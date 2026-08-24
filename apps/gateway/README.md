@@ -119,9 +119,8 @@ Boot-Banner, Statusmeldungen des Gateways und der
 USB-Enumerations-Fortschritt (`usbd`-Stack auf INF) laufen dort auf —
 praktisch für die Inbetriebnahme. Nur CDC-ACM bleibt stumm
 (`boards/stm32h573i_dk.conf`): `usbd_cdc_acm.c` macht auf INF-Level
-einen Hexdump *jedes* empfangenen Pakets, der mit `LOG_MODE_MINIMAL`
-synchron auf die 115200-Baud-VCP ginge und jeden Firmware-Upload
-ausbremsen würde.
+einen Hexdump *jedes* empfangenen Pakets; das wuerde die VCP und
+jeden Firmware-Upload ausbremsen.
 
 #### Monitoring über die Zephyr-Shell (ST-Link-VCP)
 

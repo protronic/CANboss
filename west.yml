@@ -49,3 +49,8 @@ manifest:
       remote: zephyrproject-rtos
       revision: fc11896dd39cfca37bf9b4aeaaa2df8861b81875
       path: modules/hal/stm32
+    # RTT-Logging in der Debug-Session (probe-rs / Cortex-Debug)
+    - name: segger
+      remote: zephyrproject-rtos
+      revision: 50892fdbcf2f570e67baa72b8894a66b16946f72
+      path: modules/debug/segger

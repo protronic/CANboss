@@ -38,6 +38,17 @@ Alle Apps teilen sich:
 
 ## Workspace einrichten
 
+Host-Werkzeuge fuer west/CMake/Ninja (Arch/CachyOS, `shelly`):
+
+```bash
+shelly install standard git cmake ninja gperf ccache dfu-util dtc \
+  wget curl python python-pip python-setuptools python-wheel tk \
+  xz file make gcc lib32-gcc-libs sdl2-compat unzip hidapi
+```
+
+`python -m venv` steckt im Paket `python`. 32-Bit/Multilib: `lib32-gcc-libs`.
+SDL2: `sdl2-compat` (liefert `libSDL2`). hidapi bringt hidraw- und libusb-Backend.
+
 ```bash
 pip3 install west          # oder: pacman -S python-west / shelly install aur python-west
 mkdir canboss-workspace && cd canboss-workspace
