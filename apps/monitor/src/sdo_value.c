@@ -77,8 +77,16 @@ dtype_size(cb_dtype_t dtype) {
     }
 }
 
-int
-cb_value_format(cb_dtype_t dtype, const uint8_t* data, size_t len, char* out, size_t out_size) {
+static uint64_t
+hex_mask(size_t nbytes) {
+    if (nbytes >= 8) {
+        return UINT64_MAX;
+    }
+    return (1ull << (nbytes * 8)) - 1ull;
+}
+
+static int
+format_value(cb_dtype_t dtype, const uint8_t* data, size_t len, bool hex, char* out, size_t out_size) {
     if (out_size == 0) {
         return -1;
     }
@@ -88,6 +96,28 @@ cb_value_format(cb_dtype_t dtype, const uint8_t* data, size_t len, char* out, si
     if (want != 0 && len < want) {
         snprintf(out, out_size, "(%zu Bytes?)", len);
         return -1;
+    }
+
+    if (hex) {
+        switch (dtype) {
+            case CB_DT_BOOL:
+            case CB_DT_U8:
+            case CB_DT_I8:
+            case CB_DT_U16:
+            case CB_DT_I16:
+            case CB_DT_U32:
+            case CB_DT_I32:
+            case CB_DT_U64:
+            case CB_DT_I64: {
+                uint64_t v = load_le(data, want) & hex_mask(want);
+                static const char* fmts[] = {"0x%02" PRIX64, "0x%04" PRIX64, "0x%08" PRIX64, "0x%016" PRIX64};
+                size_t k = want == 1 ? 0 : want == 2 ? 1 : want == 4 ? 2 : 3;
+                snprintf(out, out_size, fmts[k], v);
+                return 0;
+            }
+            default:
+                break;
+        }
     }
 
     switch (dtype) {
@@ -142,6 +172,39 @@ cb_value_format(cb_dtype_t dtype, const uint8_t* data, size_t len, char* out, si
             return -1;
     }
     return 0;
+}
+
+int
+cb_value_format(cb_dtype_t dtype, const uint8_t* data, size_t len, char* out, size_t out_size) {
+    return format_value(dtype, data, len, false, out, out_size);
+}
+
+int
+cb_value_display(cb_dtype_t dtype, const char* text, bool hex, char* out, size_t out_size) {
+    if (text == NULL || text[0] == '\0' || text[0] == '<' || out_size == 0) {
+        return -1;
+    }
+    switch (dtype) {
+        case CB_DT_BOOL:
+        case CB_DT_U8:
+        case CB_DT_I8:
+        case CB_DT_U16:
+        case CB_DT_I16:
+        case CB_DT_U32:
+        case CB_DT_I32:
+        case CB_DT_U64:
+        case CB_DT_I64:
+            break;
+        default:
+            return -1;
+    }
+
+    uint8_t buf[CB_DP_DATA_MAX];
+    size_t len = 0;
+    if (cb_value_parse(dtype, text, buf, sizeof(buf), &len) != 0) {
+        return -1;
+    }
+    return format_value(dtype, buf, len, hex, out, out_size);
 }
 
 static int

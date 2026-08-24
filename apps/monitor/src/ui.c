@@ -59,6 +59,7 @@ typedef struct {
     bool write_mode;
     char write_buf[CB_VALUE_MAX];
     bool auto_refresh;
+    bool hex_values; /* true = Ganzzahlen/BOOL als Hex anzeigen */
 
     /* Laufzeitwerte je Datenpunkt des geoeffneten Knotens ("" = noch
      * nicht gelesen, Anzeige faellt auf den EDS-Default zurueck) */
@@ -357,8 +358,8 @@ draw_status_bar(const cb_ui_t* ui, const char* help) {
     }
 
     tui_box(rows - 4, 0, 4, cols, CB_ST_NONE, "Status");
-    snprintf(line, sizeof(line), "%s | %s: %s | Monitor: %s | %s", context, ui->can_label, conn,
-             ui->auto_refresh ? "an" : "aus", mode);
+    snprintf(line, sizeof(line), "%s | %s: %s | Monitor: %s | Werte: %s | %s", context, ui->can_label, conn,
+             ui->auto_refresh ? "an" : "aus", ui->hex_values ? "hex" : "dez", mode);
     tui_put(rows - 3, 2, CB_ST_NONE, line);
     tui_put(rows - 2, 2, CB_ST_DIM, help);
 }
@@ -450,12 +451,25 @@ draw_monitor(cb_ui_t* ui) {
             const cb_dp_t* dp = &ui->node->dps[obj->dp_first + s];
             const char* value = ui->values[obj->dp_first + s];
             char shown[CB_VALUE_MAX + 12];
+            char converted[CB_VALUE_MAX];
+            const char* src = NULL;
+            bool is_default = false;
             if (value[0] != '\0') {
-                snprintf(shown, sizeof(shown), "%s", value);
+                src = value;
             } else if (dp->default_value[0] != '\0') {
-                snprintf(shown, sizeof(shown), "%s (default)", dp->default_value);
-            } else {
+                src = dp->default_value;
+                is_default = true;
+            }
+            if (src != NULL && cb_value_display((cb_dtype_t)dp->dtype, src, ui->hex_values, converted,
+                                                sizeof(converted)) == 0) {
+                src = converted;
+            }
+            if (src == NULL) {
                 snprintf(shown, sizeof(shown), "-");
+            } else if (is_default) {
+                snprintf(shown, sizeof(shown), "%s (default)", src);
+            } else {
+                snprintf(shown, sizeof(shown), "%s", src);
             }
             snprintf(line, sizeof(line), "%02X   %-28.28s %-10s %-4s %s", dp->sub, dp->name,
                      cb_dtype_name((cb_dtype_t)dp->dtype), cb_access_name((cb_access_t)dp->access), shown);
@@ -464,11 +478,11 @@ draw_monitor(cb_ui_t* ui) {
     }
 
 #ifdef CANBOSS_BERRY
-    draw_status_bar(
-        ui, "q Ende | b zurueck | Pfeile Objekt/Sub | / Filter | r lesen | R alle | w schreiben | m Monitor | s REPL");
+    draw_status_bar(ui, "q Ende | b zurueck | Pfeile Objekt/Sub | / Filter | r lesen | R alle | w schreiben | "
+                       "h Dez/Hex | m Monitor | s REPL");
 #else
-    draw_status_bar(ui,
-                    "q Ende | b zurueck | Pfeile Objekt/Sub | / Filter | r lesen | R alle | w schreiben | m Monitor");
+    draw_status_bar(ui, "q Ende | b zurueck | Pfeile Objekt/Sub | / Filter | r lesen | R alle | w schreiben | "
+                       "h Dez/Hex | m Monitor");
 #endif
 }
 
@@ -620,6 +634,11 @@ handle_monitor_key(cb_ui_t* ui, cb_key_t key) {
                 case 'm':
                     ui->auto_refresh = !ui->auto_refresh;
                     set_status(ui, ui->auto_refresh ? "Auto-Refresh an" : "Auto-Refresh aus");
+                    break;
+                case 'h':
+                case 'H':
+                    ui->hex_values = !ui->hex_values;
+                    set_status(ui, ui->hex_values ? "Werteanzeige: Hexadezimal" : "Werteanzeige: Dezimal");
                     break;
 #ifdef CANBOSS_BERRY
                 case 's':

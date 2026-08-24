@@ -136,6 +136,7 @@ Rust-Original im Offline-Modus (nur Browsen, kein Lesen/Schreiben).
 | `r` | gewaehlten Datenpunkt per SDO lesen |
 | `R` | alle lesbaren Datenpunkte des Objekts lesen |
 | `w` | gewaehlten Datenpunkt schreiben (Enter bestaetigt) |
+| `h` / `H` | Werteanzeige Dezimal/Hexadezimal umschalten |
 | `m` | Auto-Refresh (alle 2 s `R`) ein/aus |
 | `s` | Berry-Skript-REPL (Zephyr-Build) |
 | `q` | Beenden |

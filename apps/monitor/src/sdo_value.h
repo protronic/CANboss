@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #include "canboss.h"
 
@@ -20,6 +21,11 @@ extern "C" {
 
 /* Rohdaten (LE) als Text formatieren. Rueckgabe 0 bei Erfolg. */
 int cb_value_format(cb_dtype_t dtype, const uint8_t* data, size_t len, char* out, size_t out_size);
+
+/* Anzeigetext eines Datenpunkts in Dezimal oder Hex umsetzen.
+ * Ganzzahlen und BOOL werden neu formatiert; STR/F32/OCTET und
+ * Fehlertexte bleiben unveraendert (Rueckgabe -1). */
+int cb_value_display(cb_dtype_t dtype, const char* text, bool hex, char* out, size_t out_size);
 
 /* Eingabetext in Rohdaten (LE) wandeln. Rueckgabe 0 bei Erfolg,
  * -1 bei ungueltigem Text. *len erhaelt die Datenlaenge. */

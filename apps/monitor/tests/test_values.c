@@ -70,6 +70,23 @@ main(void) {
     assert(cb_value_format(CB_DT_OCTET, buf, len, out, sizeof(out)) == 0);
     assert(strcmp(out, "DEADBEEF") == 0);
 
+    /* Anzeige Dezimal <-> Hex (Taste H) */
+    assert(cb_value_display(CB_DT_U8, "255", true, out, sizeof(out)) == 0);
+    assert(strcmp(out, "0xFF") == 0);
+    assert(cb_value_display(CB_DT_U8, "0xFF", false, out, sizeof(out)) == 0);
+    assert(strcmp(out, "255") == 0);
+    assert(cb_value_display(CB_DT_U32, "0x00000194", false, out, sizeof(out)) == 0);
+    assert(strcmp(out, "404") == 0);
+    assert(cb_value_display(CB_DT_U32, "404", true, out, sizeof(out)) == 0);
+    assert(strcmp(out, "0x00000194") == 0);
+    assert(cb_value_display(CB_DT_I8, "-1", true, out, sizeof(out)) == 0);
+    assert(strcmp(out, "0xFF") == 0);
+    assert(cb_value_display(CB_DT_BOOL, "1", true, out, sizeof(out)) == 0);
+    assert(strcmp(out, "0x01") == 0);
+    assert(cb_value_display(CB_DT_F32, "1.5", true, out, sizeof(out)) != 0);
+    assert(cb_value_display(CB_DT_STR, "Demo", true, out, sizeof(out)) != 0);
+    assert(cb_value_display(CB_DT_U16, "<timeout>", true, out, sizeof(out)) != 0);
+
     /* Fehlerfaelle */
     assert(cb_value_parse(CB_DT_U8, "256", buf, sizeof(buf), &len) != 0);
     assert(cb_value_parse(CB_DT_U8, "-1", buf, sizeof(buf), &len) != 0);
