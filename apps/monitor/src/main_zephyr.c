@@ -35,14 +35,14 @@ main(void) {
     /* OD-Konfiguration des Masters (muss den Stack ueberleben) */
     static CO_config_t cb_master_config;
     memset(&cb_master_config, 0, sizeof(cb_master_config));
-    OD_INIT_CONFIG(cb_master_config);
+    canboss_master_INIT_CONFIG(cb_master_config);
 
-    if (cb_co_start(OD, &cb_master_config, backend, "zephyr,canbus", 0, CONFIG_CANBOSS_NODE_ID) != 0) {
+    if (cb_co_start(canboss_master, &cb_master_config, backend, "zephyr,canbus", 0, CONFIG_CANBOSS_NODE_ID) != 0) {
         printf("Warnung: %s - starte im Offline-Modus\r\n", cb_co_error());
     }
 
 #ifdef CANBOSS_BERRY
-    canboss_berry_init(OD);
+    canboss_berry_init(canboss_master);
     {
         uint8_t ids[64];
         uint16_t n = cb_net_node_count < 64 ? cb_net_node_count : 64;
