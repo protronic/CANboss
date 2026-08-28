@@ -1,7 +1,7 @@
 [submodule "modules/CANopenNode"]
 	path = modules/CANopenNode
-	url = https://github.com/protronic/CANopenNode.git
+	url = git@github.com:protronic/CANopenNode.git
 [submodule "modules/berry"]
 	path = modules/berry
-	url = https://github.com/berry-lang/berry.git
+	url = git@github.com:berry-lang/berry.git
 	ignore = untracked

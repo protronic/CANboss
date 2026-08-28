@@ -3,7 +3,7 @@
 #
 # Einrichtung:
 #   mkdir canboss-workspace && cd canboss-workspace
-#   west init -m https://github.com/protronic/CANboss
+#   west init -m git@github.com:protronic/CANboss.git
 #   west update
 #   git -C CANboss submodule update --init
 #
@@ -22,7 +22,7 @@ manifest:
 
   remotes:
     - name: zephyrproject-rtos
-      url-base: https://github.com/zephyrproject-rtos
+      url-base: git@github.com:zephyrproject-rtos
 
   projects:
     - name: zephyr
