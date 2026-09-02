@@ -193,12 +193,43 @@ gtwa_sink(void* user, const char* buf, size_t len) {
     return ring_buf_put(&gtwa_rb, (const uint8_t*)buf, (uint32_t)len);
 }
 
-/* Eine Kommandozeile (ohne '\n') ins Gateway schieben */
+/* Eine Kommandozeile (ohne '\n') ins Gateway schieben.
+ * CANopenNode (CiA 309-3) verlangt zwingend "["<sequence>"]" als erstes
+ * Token; ohne das kommt ERROR:101. {"gtwa":"help"} und die Webapp-Hilfe
+ * liefern nur das Kommando — Sequenz hier ergaenzen. */
 static void
 gtwa_send_line(const char* cmd, size_t len) {
-    const char* p = cmd;
-    size_t rest = len;
+    char lined[CB_JSONAPI_GTWA_CMD_MAX + 16];
+    const char* p;
+    size_t rest;
     int tries = 500; /* max ~500 ms auf Fifo-Platz warten */
+    static unsigned seq;
+
+    while (len > 0 && (cmd[len - 1] == '\r' || cmd[len - 1] == ' ' || cmd[len - 1] == '\t')) {
+        len--;
+    }
+    while (len > 0 && (*cmd == ' ' || *cmd == '\t')) {
+        cmd++;
+        len--;
+    }
+    if (len == 0) {
+        return;
+    }
+
+    if (cmd[0] != '[') {
+        seq = seq % 9999U + 1U;
+        int w = snprintf(lined, sizeof(lined), "[%u] %.*s", seq, (int)len, cmd);
+
+        if (w <= 0 || (size_t)w >= sizeof(lined)) {
+            emit_err("gtwa: Kommando zu lang");
+            return;
+        }
+        p = lined;
+        rest = (size_t)w;
+    } else {
+        p = cmd;
+        rest = len;
+    }
 
     while (rest > 0 && tries-- > 0) {
         int n = cb_co_gtwa_write(p, rest);

@@ -8,10 +8,11 @@
  *
  * Requests (Webapp -> Geraet):
  *
- *   {"gtwa": ["0 preop", "[1] 1 w 0x2500 2 u32 123", "[2] 1 r 0x2500 2 u32"]}
+ *   {"gtwa": ["help", "[1] 1 w 0x2500 2 u32 123", "[2] 1 r 0x2500 2 u32"]}
  *       CiA-309-3-ASCII-Kommandos (CANopenNode-Gateway); auch als
- *       Einzelstring {"gtwa": "..."} moeglich. Antwortzeilen kommen
- *       asynchron als {"gtwa": ["[1] OK", ...]}.
+ *       Einzelstring {"gtwa": "help"} moeglich. Fehlt "["<seq>"]",
+ *       haengt jsonapi sie an. Antwortzeilen kommen asynchron als
+ *       {"gtwa": ["[1] OK", ...]}.
  *
  *   {"mon": {"add": [385, "0x281"], "del": [...], "clear": true, "rate": 100}}
  *       PDO/COB-Monitor: COB-IDs (11 Bit) abonnieren; Frames kommen als
