@@ -32,6 +32,11 @@
 #define CB_CO_FIRST_HB_TIME_MS     500u
 #define CB_CO_SDO_SRV_TIMEOUT_MS   1000u
 
+#ifndef NMT_CONTROL
+#define NMT_CONTROL                                                                                                    \
+    (CO_NMT_STARTUP_TO_OPERATIONAL | CO_NMT_ERR_ON_ERR_REG | CO_ERR_REG_GENERIC_ERR | CO_ERR_REG_COMMUNICATION)
+#endif
+
 static CO_t* cb_co = NULL;
 static const cb_can_backend_t* cb_backend = NULL;
 static volatile bool cb_running = false;
@@ -183,11 +188,8 @@ cb_co_start(OD_t* od, const CO_config_t* config, const cb_can_backend_t* backend
         return cb_fail("CO_CANinit fehlgeschlagen: %d", (int)err);
     }
 
-    err = CO_CANopenInit(cb_co, NULL, NULL, od, NULL,
-                         CO_NMT_STARTUP_TO_OPERATIONAL | CO_NMT_ERR_ON_ERR_REG | CO_ERR_REG_GENERIC_ERR
-                             | CO_ERR_REG_COMMUNICATION,
-                         CB_CO_FIRST_HB_TIME_MS, CB_CO_SDO_SRV_TIMEOUT_MS, CB_CO_SDO_TIMEOUT_MS, false, own_node_id,
-                         &errInfo);
+    err = CO_CANopenInit(cb_co, NULL, NULL, od, NULL, NMT_CONTROL, CB_CO_FIRST_HB_TIME_MS, CB_CO_SDO_SRV_TIMEOUT_MS,
+                         CB_CO_SDO_TIMEOUT_MS, false, own_node_id, &errInfo);
     if (err != CO_ERROR_NO) {
         CO_delete(cb_co);
         cb_co = NULL;
