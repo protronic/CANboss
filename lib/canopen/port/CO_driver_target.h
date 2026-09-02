@@ -53,7 +53,9 @@ extern "C" {
 /* Master/Panel/Demo-Knoten: kein LSS, keine LEDs, keine
  * Parameterspeicherung. */
 #define CO_CONFIG_LSS     (0)
+#ifndef CO_CONFIG_LEDS
 #define CO_CONFIG_LEDS    (0)
+#endif
 #define CO_CONFIG_STORAGE (0)
 
 /* Emergency: Producer ja, Error-History (0x1003) nein - die ODs der
