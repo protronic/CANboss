@@ -77,7 +77,8 @@ typedef struct {
 /* Snapshot der vom Heartbeat-Consumer gesehenen Knoten.
  * filter_id 0 = alle aktiven, 1..127 = nur diese Node-ID.
  * Schreibt bis zu max Eintraege nach out. Rueckgabe: Anzahl (0..n),
- * oder -1 wenn der Stack nicht laeuft / kein HB-Consumer. */
+ * -ENODEV wenn der Stack nicht laeuft, -ENOTSUP wenn kein
+ * Heartbeat-Consumer konfiguriert ist (kein 0x1016-Eintrag). */
 int cb_co_nodstat(uint8_t filter_id, cb_co_nodstat_ent_t* out, size_t max);
 
 /* Blockierender SDO-Upload (lesen) vom entfernten Knoten.

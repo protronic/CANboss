@@ -780,8 +780,12 @@ handle_request(const char* line, size_t len) {
         }
 
         n = cb_co_nodstat((uint8_t)id, tab, sizeof(tab) / sizeof(tab[0]));
-        if (n < 0) {
+        if (n == -ENODEV) {
             emit_err("nodstat: CANopen offline");
+            return;
+        }
+        if (n < 0) {
+            emit_err("nodstat: kein Heartbeat-Consumer konfiguriert");
             return;
         }
         if (n > (int)(sizeof(tab) / sizeof(tab[0]))) {

@@ -274,19 +274,33 @@ cb_co_nodstat(uint8_t filter_id, cb_co_nodstat_ent_t* out, size_t max) {
     (void)filter_id;
     (void)out;
     (void)max;
-    return -1;
+    return cb_co_connected() ? -ENOTSUP : -ENODEV;
 #else
     const CO_HBconsumer_t* hb;
+    bool configured = false;
     int n = 0;
 
-    if (!cb_co_connected() || cb_co == NULL || cb_co->HBcons == NULL) {
-        return -1;
+    if (!cb_co_connected() || cb_co == NULL) {
+        return -ENODEV;
+    }
+    if (cb_co->HBcons == NULL) {
+        return -ENOTSUP;
     }
     if (out == NULL && max > 0) {
-        return -1;
+        return -EINVAL;
     }
 
     hb = cb_co->HBcons;
+    for (uint8_t i = 0; i < hb->numberOfMonitoredNodes; i++) {
+        if (hb->monitoredNodes[i].HBstate != CO_HBconsumer_UNCONFIGURED) {
+            configured = true;
+            break;
+        }
+    }
+    if (!configured) {
+        return -ENOTSUP;
+    }
+
     for (uint8_t i = 0; i < hb->numberOfMonitoredNodes; i++) {
         const CO_HBconsNode_t* node = &hb->monitoredNodes[i];
 

@@ -41,6 +41,8 @@
  *       ueberwacht, sobald von ihm ein Heartbeat empfangen wurde
  *       (HBstate ACTIVE). Value ist der NMT-State als String:
  *       "init" (0), "stop" (4), "op" (5), "pre" (127), "n/a" (-1).
+ *       Ohne Stack: {"err":"nodstat: CANopen offline"}. Ohne Eintrag
+ *       in 0x1016: {"err":"nodstat: kein Heartbeat-Consumer konfiguriert"}.
  *
  * Zeilen ohne fuehrende '{' sind SLCAN-ASCII (Lawicel: O, C, t..., r...,
  * Z, V, N, F, ...) und gehen als Raw-CAN parallel zum CANopen-Verkehr
