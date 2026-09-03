@@ -71,7 +71,7 @@ CO_t* cb_co_handle(void);
  * empfangen, HBstate == ACTIVE) und sein letzter NMT-State. */
 typedef struct {
     uint8_t node_id;
-    uint8_t nmt_state; /* 0 Init, 4 Stopped, 5 Operational, 127 Pre-Op */
+    int8_t nmt_state; /* 0 init, 4 stop, 5 op, 127 pre, -1 unbekannt */
 } cb_co_nodstat_ent_t;
 
 /* Snapshot der vom Heartbeat-Consumer gesehenen Knoten.

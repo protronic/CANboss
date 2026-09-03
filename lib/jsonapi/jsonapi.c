@@ -790,8 +790,28 @@ handle_request(const char* line, size_t len) {
 
         out_raw("{\"nodstat\":[", 12);
         for (int i = 0; i < n; i++) {
-            char item[24];
-            int m = snprintf(item, sizeof(item), "%s{\"%u\":%u}", first ? "" : ",", tab[i].node_id, tab[i].nmt_state);
+            const char* st;
+            char item[28];
+            int m;
+
+            switch (tab[i].nmt_state) {
+            case 0:
+                st = "init";
+                break;
+            case 4:
+                st = "stop";
+                break;
+            case 5:
+                st = "op";
+                break;
+            case 127:
+                st = "pre";
+                break;
+            default:
+                st = "n/a";
+                break;
+            }
+            m = snprintf(item, sizeof(item), "%s{\"%u\":\"%s\"}", first ? "" : ",", tab[i].node_id, st);
 
             if (m > 0) {
                 out_raw(item, (size_t)m);

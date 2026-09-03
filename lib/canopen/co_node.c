@@ -299,7 +299,7 @@ cb_co_nodstat(uint8_t filter_id, cb_co_nodstat_ent_t* out, size_t max) {
         }
         if ((size_t)n < max && out != NULL) {
             out[n].node_id = node->nodeId;
-            out[n].nmt_state = (uint8_t)node->NMTstate;
+            out[n].nmt_state = (int8_t)node->NMTstate;
         }
         n++;
     }

@@ -34,13 +34,13 @@
  *
  *   {"ping": <x>} -> {"pong": <x>}   {"info": true} -> Limits/Version
  *
- *   {"nodstat": 0}   -> {"nodstat": [{"7": 5}, {"13": 127}, ...]}
- *   {"nodstat": 13}  -> {"nodstat": [{"13": 127}]}
+ *   {"nodstat": 0}   -> {"nodstat": [{"7": "op"}, {"13": "pre"}, ...]}
+ *   {"nodstat": 13}  -> {"nodstat": [{"13": "pre"}]}
  *       NMT-State der per Heartbeat-Consumer (0x1016) gesehenen Knoten.
  *       0 = alle, 1..127 = nur diese Node-ID. Ein Knoten gilt als
  *       ueberwacht, sobald von ihm ein Heartbeat empfangen wurde
- *       (HBstate ACTIVE). Value ist der NMT-State (0 Init, 4 Stopped,
- *       5 Operational, 127 Pre-operational).
+ *       (HBstate ACTIVE). Value ist der NMT-State als String:
+ *       "init" (0), "stop" (4), "op" (5), "pre" (127), "n/a" (-1).
  *
  * Zeilen ohne fuehrende '{' sind SLCAN-ASCII (Lawicel: O, C, t..., r...,
  * Z, V, N, F, ...) und gehen als Raw-CAN parallel zum CANopen-Verkehr
