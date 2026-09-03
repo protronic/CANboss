@@ -67,6 +67,19 @@ const char* cb_co_error(void);
  * CO_LOCK_OD/CO_UNLOCK_OD schuetzen. */
 CO_t* cb_co_handle(void);
 
+/* Ein per Heartbeat-Consumer aktiver Knoten (mindestens ein HB
+ * empfangen, HBstate == ACTIVE) und sein letzter NMT-State. */
+typedef struct {
+    uint8_t node_id;
+    uint8_t nmt_state; /* 0 Init, 4 Stopped, 5 Operational, 127 Pre-Op */
+} cb_co_nodstat_ent_t;
+
+/* Snapshot der vom Heartbeat-Consumer gesehenen Knoten.
+ * filter_id 0 = alle aktiven, 1..127 = nur diese Node-ID.
+ * Schreibt bis zu max Eintraege nach out. Rueckgabe: Anzahl (0..n),
+ * oder -1 wenn der Stack nicht laeuft / kein HB-Consumer. */
+int cb_co_nodstat(uint8_t filter_id, cb_co_nodstat_ent_t* out, size_t max);
+
 /* Blockierender SDO-Upload (lesen) vom entfernten Knoten.
  * Rueckgabe 0 bei Erfolg (*read_size gesetzt), sonst -1 und
  * *abort_code enthaelt den SDO-Abortcode (0 = lokaler Fehler/Timeout).

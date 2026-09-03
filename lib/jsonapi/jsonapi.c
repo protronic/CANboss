@@ -768,15 +768,49 @@ handle_request(const char* line, size_t len) {
         return;
     }
 
+    if (cj_obj_get(root, "nodstat", &v)) {
+        int64_t id;
+        cb_co_nodstat_ent_t tab[127];
+        int n;
+        bool first = true;
+
+        if (!cj_as_i64(v, &id) || id < 0 || id > 127) {
+            emit_err("nodstat: 0 (alle) oder Node-ID 1..127 erwartet");
+            return;
+        }
+
+        n = cb_co_nodstat((uint8_t)id, tab, sizeof(tab) / sizeof(tab[0]));
+        if (n < 0) {
+            emit_err("nodstat: CANopen offline");
+            return;
+        }
+        if (n > (int)(sizeof(tab) / sizeof(tab[0]))) {
+            n = (int)(sizeof(tab) / sizeof(tab[0]));
+        }
+
+        out_raw("{\"nodstat\":[", 12);
+        for (int i = 0; i < n; i++) {
+            char item[24];
+            int m = snprintf(item, sizeof(item), "%s{\"%u\":%u}", first ? "" : ",", tab[i].node_id, tab[i].nmt_state);
+
+            if (m > 0) {
+                out_raw(item, (size_t)m);
+            }
+            first = false;
+        }
+        out_raw("]}\n", 3);
+        return;
+    }
+
     if (cj_obj_get(root, "info", &v)) {
-        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"slcan\":true,\"repl\":%s,\"monmax\":%d,\"fw\":%s,"
+        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"slcan\":true,\"nodstat\":true,\"repl\":%s,\"monmax\":%d,\"fw\":%s,"
               "\"fwslots\":%d,\"fwslotcap\":%u}}",
               (repl_exec != NULL) ? "true" : "false", CB_JSONAPI_MON_MAX, (fw != NULL) ? "true" : "false",
               (fw != NULL) ? fw->slot_count() : 0, (fw != NULL) ? (unsigned int)fw->slot_capacity() : 0u);
         return;
     }
 
-    emit_err("unbekannter Request (gtwa/mon/fw/repl/ping/info)");
+    emit_err("unbekannter Request (gtwa/mon/fw/repl/ping/nodstat/info)");
 }
 
 /* ------------------------------------------------------------------ */

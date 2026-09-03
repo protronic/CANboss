@@ -34,6 +34,14 @@
  *
  *   {"ping": <x>} -> {"pong": <x>}   {"info": true} -> Limits/Version
  *
+ *   {"nodstat": 0}   -> {"nodstat": [{"7": 5}, {"13": 127}, ...]}
+ *   {"nodstat": 13}  -> {"nodstat": [{"13": 127}]}
+ *       NMT-State der per Heartbeat-Consumer (0x1016) gesehenen Knoten.
+ *       0 = alle, 1..127 = nur diese Node-ID. Ein Knoten gilt als
+ *       ueberwacht, sobald von ihm ein Heartbeat empfangen wurde
+ *       (HBstate ACTIVE). Value ist der NMT-State (0 Init, 4 Stopped,
+ *       5 Operational, 127 Pre-operational).
+ *
  * Zeilen ohne fuehrende '{' sind SLCAN-ASCII (Lawicel: O, C, t..., r...,
  * Z, V, N, F, ...) und gehen als Raw-CAN parallel zum CANopen-Verkehr
  * auf denselben Bus; empfangene Frames kommen bei offenem Kanal als
@@ -41,7 +49,8 @@
  * sich damit auch direkt an slcand/python-can haengen.
  *
  * Antworten/Events (Geraet -> Webapp), je eine NDJSON-Zeile:
- *   {"gtwa":[...]}  {"pdo":{...}}  {"fw":{...}}  {"repl":...}  {"err":"..."}
+ *   {"gtwa":[...]}  {"pdo":{...}}  {"fw":{...}}  {"repl":...}  {"nodstat":[...]}
+ *   {"err":"..."}
  *
  * Threading: jsonapi_input() darf aus beliebigen Threads/Callbacks
  * kommen (Ringpuffer); die gesamte Verarbeitung inkl. aller Ausgaben

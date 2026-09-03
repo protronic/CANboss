@@ -268,6 +268,45 @@ cb_co_handle(void) {
     return cb_co;
 }
 
+int
+cb_co_nodstat(uint8_t filter_id, cb_co_nodstat_ent_t* out, size_t max) {
+#if ((CO_CONFIG_HB_CONS)&CO_CONFIG_HB_CONS_ENABLE) == 0
+    (void)filter_id;
+    (void)out;
+    (void)max;
+    return -1;
+#else
+    const CO_HBconsumer_t* hb;
+    int n = 0;
+
+    if (!cb_co_connected() || cb_co == NULL || cb_co->HBcons == NULL) {
+        return -1;
+    }
+    if (out == NULL && max > 0) {
+        return -1;
+    }
+
+    hb = cb_co->HBcons;
+    for (uint8_t i = 0; i < hb->numberOfMonitoredNodes; i++) {
+        const CO_HBconsNode_t* node = &hb->monitoredNodes[i];
+
+        /* Ueberwacht = mindestens ein Heartbeat empfangen und noch aktiv */
+        if (node->HBstate != CO_HBconsumer_ACTIVE) {
+            continue;
+        }
+        if (filter_id != 0 && node->nodeId != filter_id) {
+            continue;
+        }
+        if ((size_t)n < max && out != NULL) {
+            out[n].node_id = node->nodeId;
+            out[n].nmt_state = (uint8_t)node->NMTstate;
+        }
+        n++;
+    }
+    return n;
+#endif
+}
+
 /* Blockierender SDO-Upload, Muster aus 301/CO_SDOclient.h bzw.
  * CANbossTouch/App/canboss_sdo.c */
 static CO_SDO_abortCode_t
