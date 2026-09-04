@@ -6,7 +6,7 @@
  *
  * Datenfluesse:
  *   Transport-RX (beliebiger Kontext) -> in_rb  -> poll: Zeile -> Dispatch
- *   GTWA-Antworten (Mainline-Thread)  -> gtwa_rb-> poll: {"gtwa":[...]}
+ *   GTWA-Antworten (Mainline-Thread)  -> gtwa_rb-> poll: {"gtwa":{"seq":…}}
  *   Raw-RX-Hook (CAN-RX-Thread)       -> pdo_rb -> poll: {"pdo":{...}}
  *   fw send: blockiert in poll, Fortschritt als {"fw":{"prog":...}}
  */
@@ -32,13 +32,17 @@
 #error "lib/jsonapi braucht CO_CONFIG_GTW_ASCII (per CO_DRIVER_CUSTOM aktivieren, siehe apps/gateway)"
 #endif
 
-#define CB_JSONAPI_LINE_MAX     3584 /* laengste Requestzeile (fw data, ~3 KiB Base64) */
-#define CB_JSONAPI_GTWA_CMD_MAX 200  /* eine 309-3-Kommandozeile */
-#define CB_JSONAPI_IN_RB_SIZE   4608
-#define CB_JSONAPI_GTWA_RB_SIZE 1024
-#define CB_JSONAPI_PDO_RB_SIZE  (32 * sizeof(struct pdo_rec))
-#define CB_JSONAPI_MON_MAX      16
-#define CB_JSONAPI_MON_RATE_MS  100 /* Default-Mindestabstand je COB */
+#define CB_JSONAPI_LINE_MAX           3584 /* laengste Requestzeile (fw data, ~3 KiB Base64) */
+#define CB_JSONAPI_GTWA_CMD_MAX       200  /* eine CiA309-3-Kommandozeile */
+#define CB_JSONAPI_GTWA_BATCH_CAP     16   /* fest: Groesse der Sammelpuffer */
+#define CB_JSONAPI_GTWA_BATCH_MAX     1    /* Default batmax (Laufzeit, {"gtwa":{"batmax":n}}) */
+#define CB_JSONAPI_GTWA_BATCH_VAL     96   /* Nutzlast einer gesammelten GTWA-Antwort */
+#define CB_JSONAPI_GTWA_BATCH_WAIT_MS 2000 /* Wartezeit je Batch-Kommando */
+#define CB_JSONAPI_IN_RB_SIZE         4608
+#define CB_JSONAPI_GTWA_RB_SIZE       1024
+#define CB_JSONAPI_PDO_RB_SIZE        (32 * sizeof(struct pdo_rec))
+#define CB_JSONAPI_MON_MAX            16
+#define CB_JSONAPI_MON_RATE_MS        100 /* Default-Mindestabstand je COB */
 
 #ifndef CB_JSONAPI_FW_SDO_TIMEOUT_MS
 #define CB_JSONAPI_FW_SDO_TIMEOUT_MS 2000
@@ -70,6 +74,15 @@ static bool req_overflow;
 
 static char gtwa_line[256];
 static size_t gtwa_len;
+
+/* Offener Array-Batch: Antworten zu {"gtwa":[cmd, …]} in einem Objekt */
+static uint32_t gtwa_batch_seq[CB_JSONAPI_GTWA_BATCH_CAP];
+static char gtwa_batch_val[CB_JSONAPI_GTWA_BATCH_CAP][CB_JSONAPI_GTWA_BATCH_VAL];
+static uint8_t gtwa_batch_have[CB_JSONAPI_GTWA_BATCH_CAP];
+static unsigned gtwa_batch_n;
+static unsigned gtwa_batch_got;
+static unsigned gtwa_batmax = CB_JSONAPI_GTWA_BATCH_MAX;
+static unsigned gtwa_seq; /* naechste zu vergebende Sequenz, Start 0 (0..9999) */
 
 /* PDO-Monitor-Tabelle (Schreiber: poll; Leser: CAN-RX-Thread) */
 static struct k_spinlock mon_lock;
@@ -193,17 +206,129 @@ gtwa_sink(void* user, const char* buf, size_t len) {
     return ring_buf_put(&gtwa_rb, (const uint8_t*)buf, (uint32_t)len);
 }
 
+/* "[123] rest" -> seq und Rest hinter dem Token (Spaces nach ] skip). */
+static bool
+gtwa_split_seq(const char* s, size_t len, uint32_t* seq, const char** rest, size_t* rest_len) {
+    size_t i;
+    uint32_t v = 0;
+    bool any = false;
+
+    if (len < 3 || s[0] != '[') {
+        return false;
+    }
+    i = 1;
+    while (i < len && s[i] >= '0' && s[i] <= '9') {
+        uint32_t d = (uint32_t)(s[i] - '0');
+
+        if (v > (0xFFFFFFFFu - d) / 10u) {
+            return false;
+        }
+        v = v * 10u + d;
+        any = true;
+        i++;
+    }
+    if (!any || i >= len || s[i] != ']') {
+        return false;
+    }
+    i++;
+    while (i < len && (s[i] == ' ' || s[i] == '\t')) {
+        i++;
+    }
+    *seq = v;
+    *rest = s + i;
+    *rest_len = len - i;
+    return true;
+}
+
+/* Ganze Antwort ein JSON-Number-Token (optional +/-, Ganz- oder Dezimalzahl)?
+ * Hex, Exponent und fuehrende Nullen (ausser "0") gelten als String.
+ * out erhaelt das emit-fertige Token (ohne '+'). */
+static bool
+gtwa_is_number(const char* s, size_t len, char* out, size_t out_size) {
+    size_t i = 0;
+    size_t o = 0;
+
+    if (len == 0 || out_size < 2) {
+        return false;
+    }
+    if (s[0] == '+' || s[0] == '-') {
+        if (s[0] == '-') {
+            out[o++] = '-';
+        }
+        i = 1;
+        if (i >= len) {
+            return false;
+        }
+    }
+    if (s[i] == '0') {
+        out[o++] = '0';
+        i++;
+        if (i < len && s[i] >= '0' && s[i] <= '9') {
+            return false;
+        }
+    } else if (s[i] >= '1' && s[i] <= '9') {
+        while (i < len && s[i] >= '0' && s[i] <= '9') {
+            if (o + 1 >= out_size) {
+                return false;
+            }
+            out[o++] = s[i++];
+        }
+    } else {
+        return false;
+    }
+    if (i < len && s[i] == '.') {
+        if (i + 1 >= len || s[i + 1] < '0' || s[i + 1] > '9') {
+            return false;
+        }
+        if (o + 1 >= out_size) {
+            return false;
+        }
+        out[o++] = s[i++];
+        while (i < len && s[i] >= '0' && s[i] <= '9') {
+            if (o + 1 >= out_size) {
+                return false;
+            }
+            out[o++] = s[i++];
+        }
+    }
+    if (i != len || o == 0 || (o == 1 && out[0] == '-')) {
+        return false;
+    }
+    out[o] = '\0';
+    return true;
+}
+
+/* "seq":<zahl|string> nach buf. Rueckgabe wie snprintf. */
+static int
+gtwa_fmt_kv(char* buf, size_t buf_size, uint32_t seq, const char* val, size_t val_len) {
+    char num[40];
+
+    if (gtwa_is_number(val, val_len, num, sizeof(num))) {
+        return snprintf(buf, buf_size, "\"%u\":%s", (unsigned)seq, num);
+    }
+    {
+        char q[200];
+
+        cj_quote(val, val_len, q, sizeof(q));
+        return snprintf(buf, buf_size, "\"%u\":%s", (unsigned)seq, q);
+    }
+}
+
 /* Eine Kommandozeile (ohne '\n') ins Gateway schieben.
  * CANopenNode (CiA 309-3) verlangt zwingend "["<sequence>"]" als erstes
  * Token; ohne das kommt ERROR:101. {"gtwa":"help"} und die Webapp-Hilfe
- * liefern nur das Kommando — Sequenz hier ergaenzen. */
-static void
-gtwa_send_line(const char* cmd, size_t len) {
+ * liefern nur das Kommando — Sequenz hier ergaenzen.
+ * seq_out (optional) erhaelt die verwendete Sequenznummer.
+ * Rueckgabe true, wenn die Zeile im Gateway-Fifo liegt. */
+static bool
+gtwa_send_line(const char* cmd, size_t len, uint32_t* seq_out) {
     char lined[CB_JSONAPI_GTWA_CMD_MAX + 16];
     const char* p;
     size_t rest;
     int tries = 500; /* max ~500 ms auf Fifo-Platz warten */
-    static unsigned seq;
+    uint32_t used = 0;
+    const char* dummy;
+    size_t dummy_len;
 
     while (len > 0 && (cmd[len - 1] == '\r' || cmd[len - 1] == ' ' || cmd[len - 1] == '\t')) {
         len--;
@@ -213,20 +338,24 @@ gtwa_send_line(const char* cmd, size_t len) {
         len--;
     }
     if (len == 0) {
-        return;
+        return false;
     }
 
     if (cmd[0] != '[') {
-        seq = seq % 9999U + 1U;
-        int w = snprintf(lined, sizeof(lined), "[%u] %.*s", seq, (int)len, cmd);
+        used = gtwa_seq;
+        gtwa_seq = (gtwa_seq + 1U) % 10000U;
+        int w = snprintf(lined, sizeof(lined), "[%u] %.*s", (unsigned)used, (int)len, cmd);
 
         if (w <= 0 || (size_t)w >= sizeof(lined)) {
             emit_err("gtwa: Kommando zu lang");
-            return;
+            return false;
         }
         p = lined;
         rest = (size_t)w;
     } else {
+        if (!gtwa_split_seq(cmd, len, &used, &dummy, &dummy_len)) {
+            used = 0;
+        }
         p = cmd;
         rest = len;
     }
@@ -236,7 +365,7 @@ gtwa_send_line(const char* cmd, size_t len) {
 
         if (n < 0) {
             emit_err("gtwa: Gateway laeuft nicht (CANopen offline oder CNT_GTWA=0)");
-            return;
+            return false;
         }
         p += n;
         rest -= (size_t)n;
@@ -246,6 +375,58 @@ gtwa_send_line(const char* cmd, size_t len) {
     }
     if (rest > 0 || cb_co_gtwa_write("\n", 1) != 1) {
         emit_err("gtwa: Kommando-Fifo voll");
+        return false;
+    }
+    if (seq_out != NULL) {
+        *seq_out = used;
+    }
+    return true;
+}
+
+static void
+gtwa_emit_one(uint32_t seq, const char* val, size_t val_len) {
+    char kv[240];
+
+    if (gtwa_fmt_kv(kv, sizeof(kv), seq, val, val_len) > 0) {
+        emitf("{\"gtwa\":{%s}}", kv);
+    }
+}
+
+/* Eine fertige GTWA-Antwortzeile: in den offenen Batch legen oder
+ * sofort als {"gtwa":{"seq":…}} ausgeben. Zeilen ohne [seq] (help)
+ * kommen als String-Value. */
+static void
+gtwa_handle_line(const char* line, size_t len) {
+    uint32_t seq;
+    const char* rest;
+    size_t rest_len;
+
+    if (gtwa_split_seq(line, len, &seq, &rest, &rest_len)) {
+        if (gtwa_batch_n > 0) {
+            for (unsigned i = 0; i < gtwa_batch_n; i++) {
+                if (!gtwa_batch_have[i] && gtwa_batch_seq[i] == seq) {
+                    size_t n = rest_len;
+
+                    if (n >= CB_JSONAPI_GTWA_BATCH_VAL) {
+                        n = CB_JSONAPI_GTWA_BATCH_VAL - 1;
+                    }
+                    memcpy(gtwa_batch_val[i], rest, n);
+                    gtwa_batch_val[i][n] = '\0';
+                    gtwa_batch_have[i] = 1;
+                    gtwa_batch_got++;
+                    return;
+                }
+            }
+        }
+        gtwa_emit_one(seq, rest, rest_len);
+        return;
+    }
+
+    {
+        char q[420];
+
+        cj_quote(line, len, q, sizeof(q));
+        emitf("{\"gtwa\":%s}", q);
     }
 }
 
@@ -268,12 +449,49 @@ gtwa_pump(void) {
             continue;
         }
 
-        char q[420];
-
-        cj_quote(gtwa_line, gtwa_len, q, sizeof(q));
-        emitf("{\"gtwa\":[%s]}", q);
+        gtwa_handle_line(gtwa_line, gtwa_len);
         gtwa_len = 0;
     }
+}
+
+static void
+gtwa_batch_emit(void) {
+    out_raw("{\"gtwa\":{", 9);
+    for (unsigned i = 0; i < gtwa_batch_n; i++) {
+        char kv[240];
+        const char* val = gtwa_batch_have[i] ? gtwa_batch_val[i] : "ERROR:timeout";
+        int m = gtwa_fmt_kv(kv, sizeof(kv), gtwa_batch_seq[i], val, strlen(val));
+
+        if (m > 0) {
+            if (i > 0) {
+                out_raw(",", 1);
+            }
+            out_raw(kv, (size_t)m);
+        }
+    }
+    out_raw("}}\n", 3);
+    gtwa_batch_n = 0;
+    gtwa_batch_got = 0;
+}
+
+/* Wartet auf die zum Array gehoerenden [seq]-Antworten und sendet
+ * genau eine NDJSON-Zeile {"gtwa":{"seq":…, …}}. Blockiert poll
+ * (wie "fw send"); help/led-Zeilen ohne [seq] gehen weiter sofort raus. */
+static void
+gtwa_batch_wait(void) {
+    uint32_t deadline = k_uptime_get_32() + gtwa_batch_n * (uint32_t)CB_JSONAPI_GTWA_BATCH_WAIT_MS;
+
+    while (gtwa_batch_got < gtwa_batch_n) {
+        gtwa_pump();
+        if (gtwa_batch_got >= gtwa_batch_n) {
+            break;
+        }
+        if ((int32_t)(k_uptime_get_32() - deadline) >= 0) {
+            break;
+        }
+        k_sleep(K_MSEC(1));
+    }
+    gtwa_batch_emit();
 }
 
 /* ------------------------------------------------------------------ */
@@ -721,21 +939,74 @@ handle_request(const char* line, size_t len) {
             size_t n = cj_as_str(v, cmd, sizeof(cmd));
 
             if (n != (size_t)-1 && n > 0) {
-                gtwa_send_line(cmd, n);
+                (void)gtwa_send_line(cmd, n, NULL);
             }
         } else if (cj_is_arr(v)) {
             size_t it = 0;
             cj_t e;
 
+            gtwa_batch_n = 0;
+            gtwa_batch_got = 0;
+
             while (cj_arr_next(v, &it, &e)) {
                 size_t n = cj_as_str(e, cmd, sizeof(cmd));
+                uint32_t seq = 0;
 
-                if (n != (size_t)-1 && n > 0) {
-                    gtwa_send_line(cmd, n);
+                if (n == (size_t)-1 || n == 0) {
+                    continue;
+                }
+                if (!gtwa_send_line(cmd, n, &seq)) {
+                    if (gtwa_batch_n > 0) {
+                        gtwa_batch_wait();
+                    }
+                    continue;
+                }
+                gtwa_batch_seq[gtwa_batch_n] = seq;
+                gtwa_batch_have[gtwa_batch_n] = 0;
+                gtwa_batch_val[gtwa_batch_n][0] = '\0';
+                gtwa_batch_n++;
+                if (gtwa_batch_n >= gtwa_batmax) {
+                    gtwa_batch_wait();
                 }
             }
+            if (gtwa_batch_n > 0) {
+                gtwa_batch_wait();
+            }
+        } else if (cj_is_obj(v)) {
+            cj_t b;
+            int64_t n;
+            bool have_batmax = false;
+            bool have_seq = false;
+
+            if (cj_obj_get(v, "batmax", &b)) {
+                if (!cj_as_i64(b, &n) || n < 1 || n > (int64_t)CB_JSONAPI_GTWA_BATCH_CAP) {
+                    emitf("{\"err\":\"gtwa: batmax 1..%u erwartet\"}", (unsigned)CB_JSONAPI_GTWA_BATCH_CAP);
+                    return;
+                }
+                gtwa_batmax = (unsigned)n;
+                have_batmax = true;
+            }
+            if (cj_obj_get(v, "seq", &b)) {
+                if (!cj_as_i64(b, &n) || n < 0 || n > 9999) {
+                    emit_err("gtwa: seq 0..9999 erwartet");
+                    return;
+                }
+                gtwa_seq = (unsigned)n;
+                have_seq = true;
+            }
+            if (!have_batmax && !have_seq) {
+                emit_err("gtwa: batmax oder seq erwartet");
+                return;
+            }
+            if (have_batmax && have_seq) {
+                emitf("{\"gtwa\":{\"batmax\":%u,\"seq\":%u}}", gtwa_batmax, gtwa_seq);
+            } else if (have_batmax) {
+                emitf("{\"gtwa\":{\"batmax\":%u}}", gtwa_batmax);
+            } else {
+                emitf("{\"gtwa\":{\"seq\":%u}}", gtwa_seq);
+            }
         } else {
-            emit_err("gtwa: String oder Array von Strings erwartet");
+            emit_err("gtwa: String, Array oder {\"batmax\":n,\"seq\":n} erwartet");
         }
         return;
     }
@@ -827,10 +1098,11 @@ handle_request(const char* line, size_t len) {
     }
 
     if (cj_obj_get(root, "info", &v)) {
-        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"slcan\":true,\"nodstat\":true,\"repl\":%s,\"monmax\":%d,\"fw\":%s,"
-              "\"fwslots\":%d,\"fwslotcap\":%u}}",
-              (repl_exec != NULL) ? "true" : "false", CB_JSONAPI_MON_MAX, (fw != NULL) ? "true" : "false",
-              (fw != NULL) ? fw->slot_count() : 0, (fw != NULL) ? (unsigned int)fw->slot_capacity() : 0u);
+        emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"slcan\":true,\"nodstat\":true,\"repl\":%s,\"monmax\":%d,"
+              "\"batmax\":%u,\"fw\":%s,\"fwslots\":%d,\"fwslotcap\":%u}}",
+              (repl_exec != NULL) ? "true" : "false", CB_JSONAPI_MON_MAX, gtwa_batmax,
+              (fw != NULL) ? "true" : "false", (fw != NULL) ? fw->slot_count() : 0,
+              (fw != NULL) ? (unsigned int)fw->slot_capacity() : 0u);
         return;
     }
 

@@ -244,19 +244,20 @@ async function request(obj, match, timeoutMs) {
 }
 
 /* gtwa-Kommandos bekommen eine laufende [sequence], damit die
- * asynchronen Antwortzeilen eindeutig zuzuordnen sind. */
+ * asynchronen Antworten ({"gtwa": {"<seq>": …}}) zuordenbar sind. */
 let gtwaSeq = 0;
 function gtwaRequest(cmd, timeoutMs) {
   const seq = (gtwaSeq = (gtwaSeq % 9999) + 1);
-  const tag = '[' + seq + ']';
-  const p = waitFor(o => Array.isArray(o.gtwa) && o.gtwa.some(l => l.startsWith(tag)), timeoutMs);
-  return send({ gtwa: tag + ' ' + cmd })
+  const key = String(seq);
+  const p = waitFor(o => o.gtwa && typeof o.gtwa === 'object' && !Array.isArray(o.gtwa)
+    && Object.prototype.hasOwnProperty.call(o.gtwa, key), timeoutMs);
+  return send({ gtwa: '[' + seq + '] ' + cmd })
     .then(() => p)
     .then(r => {
       if (r.err !== undefined) throw new Error(r.err);
-      const line = r.gtwa.find(l => l.startsWith(tag)).slice(tag.length).trim();
-      if (line.startsWith('ERROR')) throw new Error(line);
-      return line;
+      const val = r.gtwa[key];
+      if (typeof val === 'string' && val.startsWith('ERROR')) throw new Error(val);
+      return val;
     });
 }
 
@@ -316,6 +317,7 @@ function renderInfo(info) {
   $('info').textContent =
     `Protokoll v${info.ver} · gtwa ${info.gtwa ? '✓' : '—'} · SLCAN ${info.slcan ? '✓' : '—'} · ` +
     `Berry ${info.repl ? '✓' : '—'} · Monitor max. ${info.monmax} COB-IDs · ` +
+    `batmax ${info.batmax ?? 1} · ` +
     `Firmware ${info.fw ? `${info.fwslots} × ${info.fwslotcap} B` : '—'}`;
 }
 

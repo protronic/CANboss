@@ -13,8 +13,13 @@ Fünf Funktionsblöcke:
    {"gtwa": ["0 preop", "[1] 1 w 0x2500 2 u32 123", "[2] 1 r 0x2500 2 u32", "0 start"]}
    ```
 
-   Antworten kommen asynchron zeilenweise zurück, korreliert über die
-   `[sequence]`-Nummern: `{"gtwa": ["[1] OK"]}`, `{"gtwa": ["[2] 123"]}`.
+   Jede Antwort ist ein Objekt mit der Sequenz als Key: Zahlen unquoted
+   (`{"gtwa": {"2": 123}}`), sonst String (`{"gtwa": {"1": "OK"}}`).
+   Ein Array wird in Batches zu je `batmax` Kommandos gesplittet,
+   jede Teilausgabe eine Zeile `{"gtwa": {"1": "OK", "2": 123}}`.
+   Default `batmax` ist 1; setzen mit `{"gtwa": {"batmax": n}}`
+   (1…16), sichtbar in `{"info":…}`. Autozähler:
+   `{"gtwa": {"seq": n}}` setzt die nächste Nummer (0…9999).
    `{"gtwa": "help"}` listet die komplette Kommandosyntax.
 
 2. **`mon`** — PDO/COB-Monitor: COB-IDs abonnieren, Frames kommen als

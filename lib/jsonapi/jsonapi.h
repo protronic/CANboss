@@ -11,8 +11,15 @@
  *   {"gtwa": ["help", "[1] 1 w 0x2500 2 u32 123", "[2] 1 r 0x2500 2 u32"]}
  *       CiA-309-3-ASCII-Kommandos (CANopenNode-Gateway); auch als
  *       Einzelstring {"gtwa": "help"} moeglich. Fehlt "["<seq>"]",
- *       haengt jsonapi sie an. Antwortzeilen kommen asynchron als
- *       {"gtwa": ["[1] OK", ...]}.
+ *       haengt jsonapi sie an. Jede Antwort ist ein Objekt mit der
+ *       Sequenz als Key: {"gtwa": {"1": "OK"}} bzw. Zahl unquoted
+ *       {"gtwa": {"2": 123}}. Ein Array wird in Batches zu je batmax
+ *       Kommandos gesplittet, jede Teilausgabe eine Zeile
+ *       {"gtwa": {"1": "OK", "2": 123}}. Default batmax=1; setzen mit
+ *       {"gtwa": {"batmax": n}} (1..16), steht auch in {"info":…}.
+ *       Autozähler: {"gtwa": {"seq": n}} setzt die naechste zu
+ *       vergebende Nummer ohne "["seq"]" (0..9999, danach Wrap).
+ *       Zeilen ohne [seq] (help) bleiben String: {"gtwa": "…"}.
  *
  *   {"mon": {"add": [385, "0x281"], "del": [...], "clear": true, "rate": 100}}
  *       PDO/COB-Monitor: COB-IDs (11 Bit) abonnieren; Frames kommen als
@@ -51,7 +58,7 @@
  * sich damit auch direkt an slcand/python-can haengen.
  *
  * Antworten/Events (Geraet -> Webapp), je eine NDJSON-Zeile:
- *   {"gtwa":[...]}  {"pdo":{...}}  {"fw":{...}}  {"repl":...}  {"nodstat":[...]}
+ *   {"gtwa":{...}}  {"pdo":{...}}  {"fw":{...}}  {"repl":...}  {"nodstat":[...]}
  *   {"err":"..."}
  *
  * Threading: jsonapi_input() darf aus beliebigen Threads/Callbacks
