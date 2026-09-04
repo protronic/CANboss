@@ -36,8 +36,8 @@
  *
  *   {"repl": "1+2"}  bzw.  {"repl": ["led(true)", "millis()"]}
  *       Berry-Code ausfuehren (optional, jsonapi_set_repl()): Ausgabe
- *       kommt zeilenweise als {"repl": ["3"]}, den Abschluss meldet
- *       {"repl": {"ok": true|false}}.
+ *       zeilenweise {"repl": 3} (Zahl unquoted) bzw. {"repl": "…"}.
+ *       Fehler stehen in derselben Form, nicht als {"err":…}.
  *
  *   {"ping": <x>} -> {"pong": <x>}   {"info": true} -> Limits/Version
  *
@@ -113,8 +113,8 @@ typedef int (*jsonapi_repl_exec_t)(void* user, const char* code);
 void jsonapi_set_repl(jsonapi_repl_exec_t exec, void* user);
 
 /* Ausgabetext des gerade laufenden repl-Kommandos (nur aus dem
- * Executor-Kontext rufen); wird zeilenweise als {"repl":["..."]}
- * ausgegeben. */
+ * Executor-Kontext rufen); wird zeilenweise als {"repl":…}
+ * ausgegeben (Zahl unquoted, sonst String). */
 void jsonapi_repl_out(const char* buf, size_t len);
 
 #ifdef __cplusplus

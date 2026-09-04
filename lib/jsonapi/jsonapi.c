@@ -847,16 +847,34 @@ fw_handle(cj_t obj) {
 /* ------------------------------------------------------------------ */
 /* Berry-REPL                                                          */
 
+static unsigned repl_emitted;
+
+static void
+repl_emit(const char* s, size_t len) {
+    char num[40];
+
+    if (gtwa_is_number(s, len, num, sizeof(num))) {
+        emitf("{\"repl\":%s}", num);
+    } else {
+        char q[420];
+
+        cj_quote(s, len, q, sizeof(q));
+        emitf("{\"repl\":%s}", q);
+    }
+    repl_emitted++;
+}
+
+static void
+repl_emit_msg(const char* msg) {
+    repl_emit(msg, strlen(msg));
+}
+
 static void
 repl_flush_line(void) {
     if (repl_len == 0) {
         return;
     }
-
-    char q[420];
-
-    cj_quote(repl_line, repl_len, q, sizeof(q));
-    emitf("{\"repl\":[%s]}", q);
+    repl_emit(repl_line, repl_len);
     repl_len = 0;
 }
 
@@ -887,10 +905,14 @@ jsonapi_set_repl(jsonapi_repl_exec_t exec, void* user) {
 
 static void
 repl_run(const char* code) {
-    int ret = repl_exec(repl_user, code);
+    int ret;
 
+    repl_emitted = 0;
+    ret = repl_exec(repl_user, code);
     repl_flush_line(); /* Restzeile ohne '\n' noch ausgeben */
-    emitf("{\"repl\":{\"ok\":%s}}", (ret == 0) ? "true" : "false");
+    if (ret != 0 && repl_emitted == 0) {
+        repl_emit_msg("Ausfuehrung fehlgeschlagen");
+    }
 }
 
 static void
@@ -898,12 +920,14 @@ repl_handle(cj_t v) {
     static char code[512];
 
     if (repl_exec == NULL) {
-        emit_err("repl: nicht verfuegbar (Firmware ohne Berry)");
+        repl_emit_msg("nicht verfuegbar (Firmware ohne Berry)");
         return;
     }
 
     if (cj_is_str(v)) {
-        if (cj_as_str(v, code, sizeof(code)) != (size_t)-1) {
+        if (cj_as_str(v, code, sizeof(code)) == (size_t)-1) {
+            repl_emit_msg("Kommando zu lang");
+        } else {
             repl_run(code);
         }
     } else if (cj_is_arr(v)) {
@@ -911,12 +935,14 @@ repl_handle(cj_t v) {
         cj_t e;
 
         while (cj_arr_next(v, &it, &e)) {
-            if (cj_as_str(e, code, sizeof(code)) != (size_t)-1) {
+            if (cj_as_str(e, code, sizeof(code)) == (size_t)-1) {
+                repl_emit_msg("Kommando zu lang");
+            } else {
                 repl_run(code);
             }
         }
     } else {
-        emit_err("repl: String oder Array von Strings erwartet");
+        repl_emit_msg("String oder Array von Strings erwartet");
     }
 }
 

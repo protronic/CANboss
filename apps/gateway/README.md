@@ -73,7 +73,7 @@ Fünf Funktionsblöcke:
    Ausgabe zeilenweise zurück:
 
    ```json
-   {"repl": "od_read(16, 0x1017, 0)"}   → {"repl": ["1000"]}, {"repl": {"ok": true}}
+   {"repl": "od_read(16, 0x1017, 0)"}   → {"repl": 1000}
    ```
 
 Vollständige Protokollreferenz: [`lib/jsonapi/jsonapi.h`](../../lib/jsonapi/jsonapi.h).

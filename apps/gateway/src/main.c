@@ -58,7 +58,7 @@ sink_write(void* user, const void* buf, size_t len) {
 #ifdef CANBOSS_BERRY
 /* {"repl": ...}: canboss_berry_exec() im poll-Kontext; die
  * Berry-Ausgabe (be_writebuffer -> lib/berry_od/berry_port.c -> Senke)
- * geht an jsonapi_repl_out und damit als {"repl":[...]} raus. */
+ * geht an jsonapi_repl_out und damit als {"repl":…} raus. */
 static void
 berry_sink(void* user, const char* buf, size_t len) {
     (void)user;
