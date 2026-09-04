@@ -66,7 +66,7 @@ Fünf Funktionsblöcke:
    Optional legt [`udev/99-canboss-gateway.rules`](udev/99-canboss-gateway.rules)
    das Symlink `/dev/ttyCANboss` an.
 
-   Protokolldetails: [`lib/jsonapi/jsonapi_slcan.h`](../../lib/jsonapi/jsonapi_slcan.h).
+   Protokolldetails: [`lib/host_io/slcan.h`](../../lib/host_io/slcan.h).
 
 5. **`repl`** — Berry-Code ausführen (Kconfig `CANBOSS_GW_BERRY`,
    Default an): dieselbe VM samt `od_*`-Bindings wie Monitor/Panel,
@@ -76,7 +76,7 @@ Fünf Funktionsblöcke:
    {"repl": "od_read(16, 0x1017, 0)"}   → {"repl": 1000}
    ```
 
-Vollständige Protokollreferenz: [`lib/jsonapi/jsonapi.h`](../../lib/jsonapi/jsonapi.h).
+Vollständige Protokollreferenz: [`lib/host_io/ndjson.h`](../../lib/host_io/ndjson.h).
 Bedienoberfläche: [`webapp/index.html`](webapp/index.html) (Chrome/Edge,
 WebSerial; über HTTPS oder `http://localhost` öffnen).
 
@@ -226,7 +226,7 @@ west build -b stm32h573i_dk CANboss/apps/gateway -d build-gw-h573 -- \
 Firmware-Slots liegen im RAM (`CANBOSS_GW_FW_SLOTS`/`_SLOT_SIZE`,
 Default 1 × 64 KiB) und sind nach Reset leer — persistente Slots
 liefert das Flash-Backend von canBLEberry (gleiches
-`jsonapi_fw_ops`-Interface).
+`ndjson_fw_ops`-Interface).
 
 ### Webapp öffnen
 
@@ -250,15 +250,15 @@ Portfreigabe.
 
 ## Einordnung
 
-- Die Gateway-Logik steckt komplett in [`lib/jsonapi`](../../lib/jsonapi)
-  und ist transport-agnostisch (Byte-Senke + `jsonapi_input()`). Welche
+- Die Gateway-Logik steckt komplett in [`lib/host_io`](../../lib/host_io)
+  und ist transport-agnostisch (Byte-Senke + `ndjson_input()`). Welche
   UART den Strom trägt, entscheidet allein das chosen
   `canboss,jsonapi-uart` — CDC-ACM, ST-Link-VCP oder native_sim-PTY,
   `src/main.c` sieht keinen Unterschied. Dieselbe Trennung erlaubt es
   canBLEberry, das Protokoll über **BLE** anzubieten (STM32WBA6 hat
   kein USB-Device am DK-VCP-Weg vorbei; dort ist NUS/GATT der Kanal).
 - Das CANopenNode-Gateway teilt sich `SDOclient[0]` mit
-  `cb_co_sdo_read/_write/_write_stream`; der jsonapi-Dispatcher
+  `cb_co_sdo_read/_write/_write_stream`; der ndjson-Dispatcher
   arbeitet Requests sequenziell ab und vermeidet so Kollisionen.
   Weitere SDO-Nutzer (z. B. eine parallel laufende Berry-REPL) müssen
   selbst darauf achten.

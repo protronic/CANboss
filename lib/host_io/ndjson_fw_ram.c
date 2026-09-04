@@ -1,5 +1,5 @@
 /**
- * jsonapi_fw_ram.c - RAM-Backend fuer jsonapi-Firmware-Slots
+ * ndjson_fw_ram.c - RAM-Backend fuer ndjson-Firmware-Slots
  *
  * Fuer Targets mit reichlich RAM (STM32H573: 640 KiB) und native_sim.
  * Slots/Groesse per Compile-Definition:
@@ -11,7 +11,7 @@
  * (canBLEberry: src/fwstore.c).
  */
 
-#include "jsonapi_fw.h"
+#include "ndjson_fw.h"
 
 #include <errno.h>
 #include <stdbool.h>
@@ -29,7 +29,7 @@ static struct {
     bool valid;
     size_t size;
     uint32_t crc32;
-    char name[JSONAPI_FW_NAME_MAX + 1];
+    char name[NDJSON_FW_NAME_MAX + 1];
 } slot_meta[CB_FW_RAM_SLOTS];
 
 static int wr_slot = -1;
@@ -133,7 +133,7 @@ ram_write_end(const char* name, uint32_t crc_expected, uint32_t* crc_actual) {
     slot_meta[wr_slot].size = wr_len;
     slot_meta[wr_slot].crc32 = crc;
     memset(slot_meta[wr_slot].name, 0, sizeof(slot_meta[wr_slot].name));
-    strncpy(slot_meta[wr_slot].name, (name != NULL) ? name : "", JSONAPI_FW_NAME_MAX);
+    strncpy(slot_meta[wr_slot].name, (name != NULL) ? name : "", NDJSON_FW_NAME_MAX);
     slot_meta[wr_slot].valid = true;
     wr_slot = -1;
     return 0;
@@ -156,7 +156,7 @@ ram_read(int slot, size_t off, void* buf, size_t len) {
     return 0;
 }
 
-const jsonapi_fw_ops_t jsonapi_fw_ram = {
+const ndjson_fw_ops_t ndjson_fw_ram = {
     .slot_count = ram_slot_count,
     .slot_capacity = ram_slot_capacity,
     .slot_info = ram_slot_info,

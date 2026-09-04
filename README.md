@@ -24,7 +24,7 @@ Alle Apps teilen sich:
   (`co_node`: RX-/Mainline-Threads, blockierende SDO-Client-Transfers)
 - `lib/od/` — generierte Objektverzeichnisse (canboss_master fuer
   Monitor+Panel, demo_* fuer die Knoten; Quelle: `eds/*.eds`)
-- `lib/jsonapi/` — NDJSON-Interface fuer Webapps (WebSerial/Web-BLE):
+- `lib/host_io/` — NDJSON-Interface fuer Webapps (WebSerial/Web-BLE):
   gtwa-Kommandos, PDO-Monitor, Firmware-Annahme + SDO-Streaming,
   SLCAN-Bruecke (Zeilen ohne '{': Lawicel-ASCII <-> Raw-CAN, parallel
   zum CANopen-Verkehr); transport-agnostisch, die App waehlt die UART

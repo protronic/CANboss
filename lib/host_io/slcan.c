@@ -1,15 +1,15 @@
 /**
- * jsonapi_slcan.c - SLCAN-Bruecke im NDJSON-Strom, siehe
- * jsonapi_slcan.h. Eigenstaendige Implementierung des
+ * slcan.c - SLCAN-Bruecke im NDJSON-Strom, siehe
+ * slcan.h. Eigenstaendige Implementierung des
  * Lawicel-Protokolls (CANUSB); Kommandosatz und Antwortkonventionen
  * wie bei den ueblichen slcan-Firmwares.
  *
- * Threading wie beim PDO-Monitor in jsonapi.c: der Raw-RX-Hook
+ * Threading wie beim PDO-Monitor in ndjson.c: der Raw-RX-Hook
  * (CAN-RX-Thread) legt Frames in einen Ringpuffer, die Ausgabe
  * laeuft komplett im poll-Thread.
  */
 
-#include "jsonapi_slcan.h"
+#include "slcan.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/ring_buffer.h>
@@ -134,12 +134,12 @@ tx_frame(const char* line, size_t len, bool rtr) {
 }
 
 void
-jsonapi_slcan_init(void (*out)(const char* buf, size_t len)) {
+slcan_init(void (*out)(const char* buf, size_t len)) {
     slcan_out = out;
 }
 
 void
-jsonapi_slcan_line(const char* line, size_t len) {
+slcan_line(const char* line, size_t len) {
     if (len == 0) {
         return;
     }
@@ -233,7 +233,7 @@ jsonapi_slcan_line(const char* line, size_t len) {
 }
 
 void
-jsonapi_slcan_rx(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr) {
+slcan_rx(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr) {
     if (!slcan_open) {
         return;
     }
@@ -256,7 +256,7 @@ jsonapi_slcan_rx(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr) {
 }
 
 void
-jsonapi_slcan_pump(void) {
+slcan_pump(void) {
     struct slcan_rec rec;
 
     while (ring_buf_get(&slcan_rb, (uint8_t*)&rec, sizeof(rec)) == sizeof(rec)) {

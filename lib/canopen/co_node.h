@@ -125,7 +125,7 @@ const char* cb_co_abort_str(uint32_t abort_code);
  *
  * Achtung: das Gateway teilt sich SDOclient[0] mit cb_co_sdo_read/
  * _write/_write_stream - GTWA-SDO-Kommandos nicht gleichzeitig mit
- * eigenen SDO-Transfers absetzen (der jsonapi-Dispatcher serialisiert
+ * eigenen SDO-Transfers absetzen (der ndjson-Dispatcher serialisiert
  * das; zusaetzliche Aufrufer muessen selbst darauf achten). */
 
 /* Antwortdaten-Senke; Rueckgabe: verarbeitete Bytes (== len, wenn die

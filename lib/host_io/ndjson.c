@@ -1,5 +1,5 @@
 /**
- * jsonapi.c - NDJSON-Interface fuer Webapps, siehe jsonapi.h
+ * ndjson.c - NDJSON-Interface fuer Webapps, siehe ndjson.h
  *
  * Zephyr-only (Ringpuffer, Spinlock, k_sleep); genutzt von
  * apps/gateway (USB-CDC/Konsole) und perspektivisch canBLEberry (BLE).
@@ -11,7 +11,7 @@
  *   fw send: blockiert in poll, Fortschritt als {"fw":{"prog":...}}
  */
 
-#include "jsonapi.h"
+#include "ndjson.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/ring_buffer.h>
@@ -25,33 +25,35 @@
 #include "co_node.h"
 #include "osal.h"
 
-#include "jsonapi_json.h"
-#include "jsonapi_slcan.h"
+#include "ndjson_parse.h"
+#include "slcan.h"
 
 #if ((CO_CONFIG_GTW)&CO_CONFIG_GTW_ASCII) == 0
-#error "lib/jsonapi braucht CO_CONFIG_GTW_ASCII (per CO_DRIVER_CUSTOM aktivieren, siehe apps/gateway)"
+#error "lib/host_io braucht CO_CONFIG_GTW_ASCII (per CO_DRIVER_CUSTOM aktivieren, siehe apps/gateway)"
 #endif
 
-#define CB_JSONAPI_LINE_MAX           3584 /* laengste Requestzeile (fw data, ~3 KiB Base64) */
-#define CB_JSONAPI_GTWA_CMD_MAX       200  /* eine CiA309-3-Kommandozeile */
-#define CB_JSONAPI_GTWA_BATCH_CAP     16   /* fest: Groesse der Sammelpuffer */
-#define CB_JSONAPI_GTWA_BATCH_MAX     1    /* Default batmax (Laufzeit, {"gtwa":{"batmax":n}}) */
-#define CB_JSONAPI_GTWA_BATCH_VAL     96   /* Nutzlast einer gesammelten GTWA-Antwort */
-#define CB_JSONAPI_GTWA_BATCH_WAIT_MS 2000 /* Wartezeit je Batch-Kommando */
-#define CB_JSONAPI_IN_RB_SIZE         4608
-#define CB_JSONAPI_GTWA_RB_SIZE       1024
-#define CB_JSONAPI_PDO_RB_SIZE        (32 * sizeof(struct pdo_rec))
-#define CB_JSONAPI_MON_MAX            16
-#define CB_JSONAPI_MON_RATE_MS        100 /* Default-Mindestabstand je COB */
+#define CB_NDJSON_LINE_MAX           3584 /* laengste Requestzeile (fw data, ~3 KiB Base64) */
+#define CB_NDJSON_GTWA_CMD_MAX       200  /* eine CiA309-3-Kommandozeile */
+#define CB_NDJSON_GTWA_BATCH_CAP     16   /* fest: Groesse der Sammelpuffer */
+#define CB_NDJSON_GTWA_BATCH_MAX     1    /* Default batmax (Laufzeit, {"gtwa":{"batmax":n}}) */
+#define CB_NDJSON_GTWA_BATCH_VAL     96   /* Nutzlast einer gesammelten GTWA-Antwort */
+#define CB_NDJSON_GTWA_BATCH_WAIT_MS 2000 /* Wartezeit je Batch-Kommando */
+#define CB_NDJSON_GTWA_DRAIN_QUIET_MS 30  /* help/log: Ende nach Ruhepause */
+#define CB_NDJSON_GTWA_LED_WAIT_MS    150 /* erste CR-Zeile von "led" */
+#define CB_NDJSON_IN_RB_SIZE         4608
+#define CB_NDJSON_GTWA_RB_SIZE       1024
+#define CB_NDJSON_PDO_RB_SIZE        (32 * sizeof(struct pdo_rec))
+#define CB_NDJSON_MON_MAX            16
+#define CB_NDJSON_MON_RATE_MS        100 /* Default-Mindestabstand je COB */
 
-#ifndef CB_JSONAPI_FW_SDO_TIMEOUT_MS
-#define CB_JSONAPI_FW_SDO_TIMEOUT_MS 2000
+#ifndef CB_NDJSON_FW_SDO_TIMEOUT_MS
+#define CB_NDJSON_FW_SDO_TIMEOUT_MS 2000
 #endif
-#ifndef CB_JSONAPI_FW_INDEX_DEFAULT
-#define CB_JSONAPI_FW_INDEX_DEFAULT 0x1F50 /* CiA 302 Program data */
+#ifndef CB_NDJSON_FW_INDEX_DEFAULT
+#define CB_NDJSON_FW_INDEX_DEFAULT 0x1F50 /* CiA 302 Program data */
 #endif
-#ifndef CB_JSONAPI_FW_SUB_DEFAULT
-#define CB_JSONAPI_FW_SUB_DEFAULT 1
+#ifndef CB_NDJSON_FW_SUB_DEFAULT
+#define CB_NDJSON_FW_SUB_DEFAULT 1
 #endif
 
 struct pdo_rec {
@@ -61,14 +63,14 @@ struct pdo_rec {
     uint32_t t_ms;
 };
 
-static jsonapi_sink_t out_sink;
-static const jsonapi_fw_ops_t* fw;
+static ndjson_sink_t out_sink;
+static const ndjson_fw_ops_t* fw;
 
-RING_BUF_DECLARE(in_rb, CB_JSONAPI_IN_RB_SIZE);
-RING_BUF_DECLARE(gtwa_rb, CB_JSONAPI_GTWA_RB_SIZE);
-RING_BUF_DECLARE(pdo_rb, CB_JSONAPI_PDO_RB_SIZE);
+RING_BUF_DECLARE(in_rb, CB_NDJSON_IN_RB_SIZE);
+RING_BUF_DECLARE(gtwa_rb, CB_NDJSON_GTWA_RB_SIZE);
+RING_BUF_DECLARE(pdo_rb, CB_NDJSON_PDO_RB_SIZE);
 
-static char req_line[CB_JSONAPI_LINE_MAX];
+static char req_line[CB_NDJSON_LINE_MAX];
 static size_t req_len;
 static bool req_overflow;
 
@@ -76,31 +78,34 @@ static char gtwa_line[256];
 static size_t gtwa_len;
 
 /* Offener Array-Batch: Antworten zu {"gtwa":[cmd, …]} in einem Objekt */
-static uint32_t gtwa_batch_seq[CB_JSONAPI_GTWA_BATCH_CAP];
-static char gtwa_batch_val[CB_JSONAPI_GTWA_BATCH_CAP][CB_JSONAPI_GTWA_BATCH_VAL];
-static uint8_t gtwa_batch_have[CB_JSONAPI_GTWA_BATCH_CAP];
+static uint32_t gtwa_batch_seq[CB_NDJSON_GTWA_BATCH_CAP];
+static char gtwa_batch_val[CB_NDJSON_GTWA_BATCH_CAP][CB_NDJSON_GTWA_BATCH_VAL];
+static uint8_t gtwa_batch_have[CB_NDJSON_GTWA_BATCH_CAP];
 static unsigned gtwa_batch_n;
 static unsigned gtwa_batch_got;
-static unsigned gtwa_batmax = CB_JSONAPI_GTWA_BATCH_MAX;
+static unsigned gtwa_batmax = CB_NDJSON_GTWA_BATCH_MAX;
 static unsigned gtwa_seq; /* naechste zu vergebende Sequenz, Start 0 (0..9999) */
+static uint32_t gtwa_unseq_wait = UINT32_MAX; /* aus; sonst seq von help/log */
+static bool gtwa_unseq_got;                   /* [seq]-Antwort waehrend gtwa_drain */
+static unsigned gtwa_unseq_lines;             /* Freitextzeilen waehrend Drain */
 
 /* PDO-Monitor-Tabelle (Schreiber: poll; Leser: CAN-RX-Thread) */
 static struct k_spinlock mon_lock;
 static struct {
     uint16_t cob;
     uint32_t last_ms;
-} mon_tab[CB_JSONAPI_MON_MAX];
+} mon_tab[CB_NDJSON_MON_MAX];
 static int mon_count;
-static uint32_t mon_rate_ms = CB_JSONAPI_MON_RATE_MS;
+static uint32_t mon_rate_ms = CB_NDJSON_MON_RATE_MS;
 static uint32_t mon_dropped;
 
 /* fw-Upload-Zustand (nur poll-Thread) */
 static bool fw_uploading;
 static size_t fw_expect, fw_got;
-static char fw_name[JSONAPI_FW_NAME_MAX + 1];
+static char fw_name[NDJSON_FW_NAME_MAX + 1];
 
-/* Berry-REPL (optional, jsonapi_set_repl) */
-static jsonapi_repl_exec_t repl_exec;
+/* Berry-REPL (optional, ndjson_set_repl) */
+static ndjson_repl_exec_t repl_exec;
 static void* repl_user;
 static char repl_line[256];
 static size_t repl_len;
@@ -322,7 +327,7 @@ gtwa_fmt_kv(char* buf, size_t buf_size, uint32_t seq, const char* val, size_t va
  * Rueckgabe true, wenn die Zeile im Gateway-Fifo liegt. */
 static bool
 gtwa_send_line(const char* cmd, size_t len, uint32_t* seq_out) {
-    char lined[CB_JSONAPI_GTWA_CMD_MAX + 16];
+    char lined[CB_NDJSON_GTWA_CMD_MAX + 16];
     const char* p;
     size_t rest;
     int tries = 500; /* max ~500 ms auf Fifo-Platz warten */
@@ -402,13 +407,16 @@ gtwa_handle_line(const char* line, size_t len) {
     size_t rest_len;
 
     if (gtwa_split_seq(line, len, &seq, &rest, &rest_len)) {
+        if (gtwa_unseq_wait != UINT32_MAX && seq == gtwa_unseq_wait) {
+            gtwa_unseq_got = true;
+        }
         if (gtwa_batch_n > 0) {
             for (unsigned i = 0; i < gtwa_batch_n; i++) {
                 if (!gtwa_batch_have[i] && gtwa_batch_seq[i] == seq) {
                     size_t n = rest_len;
 
-                    if (n >= CB_JSONAPI_GTWA_BATCH_VAL) {
-                        n = CB_JSONAPI_GTWA_BATCH_VAL - 1;
+                    if (n >= CB_NDJSON_GTWA_BATCH_VAL) {
+                        n = CB_NDJSON_GTWA_BATCH_VAL - 1;
                     }
                     memcpy(gtwa_batch_val[i], rest, n);
                     gtwa_batch_val[i][n] = '\0';
@@ -479,7 +487,7 @@ gtwa_batch_emit(void) {
  * (wie "fw send"); help/led-Zeilen ohne [seq] gehen weiter sofort raus. */
 static void
 gtwa_batch_wait(void) {
-    uint32_t deadline = k_uptime_get_32() + gtwa_batch_n * (uint32_t)CB_JSONAPI_GTWA_BATCH_WAIT_MS;
+    uint32_t deadline = k_uptime_get_32() + gtwa_batch_n * (uint32_t)CB_NDJSON_GTWA_BATCH_WAIT_MS;
 
     while (gtwa_batch_got < gtwa_batch_n) {
         gtwa_pump();
@@ -505,7 +513,7 @@ mon_rx_hook(uint16_t ident, const uint8_t* data, uint8_t dlc, bool rtr) {
     uint32_t now_ms = (uint32_t)(cb_now_us() / 1000u);
     bool take = false;
 
-    jsonapi_slcan_rx(ident, data, dlc, rtr);
+    slcan_rx(ident, data, dlc, rtr);
     if (rtr) {
         return;
     }
@@ -618,7 +626,7 @@ mon_handle(cj_t mon) {
                 for (int i = 0; i < mon_count; i++) {
                     known = known || (mon_tab[i].cob == (uint16_t)num);
                 }
-                if (!known && mon_count < CB_JSONAPI_MON_MAX) {
+                if (!known && mon_count < CB_NDJSON_MON_MAX) {
                     mon_tab[mon_count].cob = (uint16_t)num;
                     mon_tab[mon_count].last_ms = 0;
                     mon_count++;
@@ -775,7 +783,7 @@ fw_handle(cj_t obj) {
         for (int i = 0; i < fw->slot_count(); i++) {
             size_t size;
             uint32_t crc;
-            char name[JSONAPI_FW_NAME_MAX + 1];
+            char name[NDJSON_FW_NAME_MAX + 1];
             char qname[100];
             char item[176];
             size_t item_len;
@@ -805,10 +813,10 @@ fw_handle(cj_t obj) {
         emitf("{\"fw\":{\"ok\":\"erase\",\"slot\":%d}}", (int)num);
 
     } else if (strcmp(op, "send") == 0) {
-        int64_t slot = 0, node = 0, index = CB_JSONAPI_FW_INDEX_DEFAULT, sub = CB_JSONAPI_FW_SUB_DEFAULT;
+        int64_t slot = 0, node = 0, index = CB_NDJSON_FW_INDEX_DEFAULT, sub = CB_NDJSON_FW_SUB_DEFAULT;
         size_t size;
         uint32_t crc;
-        char name[JSONAPI_FW_NAME_MAX + 1];
+        char name[NDJSON_FW_NAME_MAX + 1];
 
         if (!cj_obj_get(obj, "slot", &v) || !cj_as_i64(v, &slot) || !cj_obj_get(obj, "node", &v)
             || !cj_as_i64(v, &node) || node < 1 || node > 127) {
@@ -831,7 +839,7 @@ fw_handle(cj_t obj) {
 
         /* Blockiert poll() fuer die Dauer des Transfers; GTWA-Antworten
          * und PDO-Events puffern derweil (Ringpuffer/respHold). */
-        if (cb_co_sdo_write_stream((uint8_t)node, (uint16_t)index, (uint8_t)sub, size, CB_JSONAPI_FW_SDO_TIMEOUT_MS,
+        if (cb_co_sdo_write_stream((uint8_t)node, (uint16_t)index, (uint8_t)sub, size, CB_NDJSON_FW_SDO_TIMEOUT_MS,
                                    fw_send_read, &ctx, fw_send_progress, &ctx, &abort_code)
             != 0) {
             emitf("{\"err\":\"fw send: SDO-Abbruch 0x%08x\"}", (unsigned int)abort_code);
@@ -879,7 +887,7 @@ repl_flush_line(void) {
 }
 
 void
-jsonapi_repl_out(const char* buf, size_t len) {
+ndjson_repl_out(const char* buf, size_t len) {
     for (size_t i = 0; i < len; i++) {
         char c = buf[i];
 
@@ -898,7 +906,7 @@ jsonapi_repl_out(const char* buf, size_t len) {
 }
 
 void
-jsonapi_set_repl(jsonapi_repl_exec_t exec, void* user) {
+ndjson_set_repl(ndjson_repl_exec_t exec, void* user) {
     repl_exec = exec;
     repl_user = user;
 }
@@ -959,7 +967,7 @@ handle_request(const char* line, size_t len) {
     }
 
     if (cj_obj_get(root, "gtwa", &v)) {
-        char cmd[CB_JSONAPI_GTWA_CMD_MAX];
+        char cmd[CB_NDJSON_GTWA_CMD_MAX];
 
         if (cj_is_str(v)) {
             size_t n = cj_as_str(v, cmd, sizeof(cmd));
@@ -1005,8 +1013,8 @@ handle_request(const char* line, size_t len) {
             bool have_seq = false;
 
             if (cj_obj_get(v, "batmax", &b)) {
-                if (!cj_as_i64(b, &n) || n < 1 || n > (int64_t)CB_JSONAPI_GTWA_BATCH_CAP) {
-                    emitf("{\"err\":\"gtwa: batmax 1..%u erwartet\"}", (unsigned)CB_JSONAPI_GTWA_BATCH_CAP);
+                if (!cj_as_i64(b, &n) || n < 1 || n > (int64_t)CB_NDJSON_GTWA_BATCH_CAP) {
+                    emitf("{\"err\":\"gtwa: batmax 1..%u erwartet\"}", (unsigned)CB_NDJSON_GTWA_BATCH_CAP);
                     return;
                 }
                 gtwa_batmax = (unsigned)n;
@@ -1126,7 +1134,7 @@ handle_request(const char* line, size_t len) {
     if (cj_obj_get(root, "info", &v)) {
         emitf("{\"info\":{\"ver\":1,\"gtwa\":true,\"slcan\":true,\"nodstat\":true,\"repl\":%s,\"monmax\":%d,"
               "\"batmax\":%u,\"fw\":%s,\"fwslots\":%d,\"fwslotcap\":%u}}",
-              (repl_exec != NULL) ? "true" : "false", CB_JSONAPI_MON_MAX, gtwa_batmax,
+              (repl_exec != NULL) ? "true" : "false", CB_NDJSON_MON_MAX, gtwa_batmax,
               (fw != NULL) ? "true" : "false", (fw != NULL) ? fw->slot_count() : 0,
               (fw != NULL) ? (unsigned int)fw->slot_capacity() : 0u);
         return;
@@ -1139,7 +1147,7 @@ handle_request(const char* line, size_t len) {
 /* API                                                                 */
 
 int
-jsonapi_init(const jsonapi_sink_t* sink, const jsonapi_fw_ops_t* fw_ops) {
+ndjson_init(const ndjson_sink_t* sink, const ndjson_fw_ops_t* fw_ops) {
     if (sink == NULL || sink->write == NULL) {
         return -EINVAL;
     }
@@ -1148,19 +1156,19 @@ jsonapi_init(const jsonapi_sink_t* sink, const jsonapi_fw_ops_t* fw_ops) {
 
     cb_co_gtwa_set_read(gtwa_sink, NULL);
     cb_co_set_raw_rx_hook(mon_rx_hook);
-    jsonapi_slcan_init(out_raw);
+    slcan_init(out_raw);
     return 0;
 }
 
 void
-jsonapi_input(const void* buf, size_t len) {
+ndjson_input(const void* buf, size_t len) {
     if (ring_buf_put(&in_rb, buf, (uint32_t)len) < len) {
         req_overflow = true; /* poll meldet den Fehler beim Zeilenende */
     }
 }
 
 void
-jsonapi_poll(void) {
+ndjson_poll(void) {
     uint8_t c;
 
     while (ring_buf_get(&in_rb, &c, 1) == 1) {
@@ -1178,8 +1186,8 @@ jsonapi_poll(void) {
                     /* NDJSON-Request */
                     handle_request(&req_line[skip], req_len - skip);
                 } else if (skip < req_len) {
-                    /* keine '{': SLCAN-ASCII (Lawicel), siehe jsonapi_slcan.h */
-                    jsonapi_slcan_line(&req_line[skip], req_len - skip);
+                    /* keine '{': SLCAN-ASCII (Lawicel), siehe slcan.h */
+                    slcan_line(&req_line[skip], req_len - skip);
                 }
             }
             req_len = 0;
@@ -1195,5 +1203,5 @@ jsonapi_poll(void) {
 
     gtwa_pump();
     mon_pump();
-    jsonapi_slcan_pump();
+    slcan_pump();
 }

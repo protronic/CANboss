@@ -1,5 +1,5 @@
 /**
- * jsonapi.h
+ * ndjson.h
  *
  * NDJSON-Interface fuer Webapps (WebSerial ueber USB-CDC, Web-BLE,
  * WebSocket-Bridge, ...): pro Zeile ein JSON-Objekt, in beide
@@ -11,7 +11,7 @@
  *   {"gtwa": ["help", "[1] 1 w 0x2500 2 u32 123", "[2] 1 r 0x2500 2 u32"]}
  *       CiA-309-3-ASCII-Kommandos (CANopenNode-Gateway); auch als
  *       Einzelstring {"gtwa": "help"} moeglich. Fehlt "["<seq>"]",
- *       haengt jsonapi sie an. Jede Antwort ist ein Objekt mit der
+ *       haengt ndjson sie an. Jede Antwort ist ein Objekt mit der
  *       Sequenz als Key: {"gtwa": {"1": "OK"}} bzw. Zahl unquoted
  *       {"gtwa": {"2": 123}}. Ein Array wird in Batches zu je batmax
  *       Kommandos gesplittet, jede Teilausgabe eine Zeile
@@ -19,7 +19,9 @@
  *       {"gtwa": {"batmax": n}} (1..16), steht auch in {"info":…}.
  *       Autozähler: {"gtwa": {"seq": n}} setzt die naechste zu
  *       vergebende Nummer ohne "["seq"]" (0..9999, danach Wrap).
- *       Zeilen ohne [seq] (help) bleiben String: {"gtwa": "…"}.
+ *       Zeilen ohne [seq] (help/log) bleiben String: {"gtwa": "…"}.
+ *       Danach schliesst {"gtwa": {"<seq>": "OK"}} die Sequenz (kein
+ *       Timeout: diese Kommandos liefern keine "[seq]"-Antwort).
  *
  *   {"mon": {"add": [385, "0x281"], "del": [...], "clear": true, "rate": 100}}
  *       PDO/COB-Monitor: COB-IDs (11 Bit) abonnieren; Frames kommen als
@@ -35,9 +37,11 @@
  *       als {"fw": {"prog": [sent, total], "slot": 0, "node": 16}}.
  *
  *   {"repl": "1+2"}  bzw.  {"repl": ["led(true)", "millis()"]}
- *       Berry-Code ausfuehren (optional, jsonapi_set_repl()): Ausgabe
- *       zeilenweise {"repl": 3} (Zahl unquoted) bzw. {"repl": "…"}.
- *       Fehler stehen in derselben Form, nicht als {"err":…}.
+ *       Berry-Code ausfuehren (optional, ndjson_set_repl()). Wie
+ *       gtwa: fehlendes "["<seq>"]" wird vergeben (Start 0, Wrap
+ *       9999->0). Antwort {"repl": {"0": 3}} (Zahl unquoted) bzw.
+ *       {"repl": {"1": "…"}}. Autozähler: {"repl": {"seq": n}}.
+ *       Fehler in derselben Form, nicht als {"err":…}.
  *
  *   {"ping": <x>} -> {"pong": <x>}   {"info": true} -> Limits/Version
  *
@@ -54,27 +58,27 @@
  * Zeilen ohne fuehrende '{' sind SLCAN-ASCII (Lawicel: O, C, t..., r...,
  * Z, V, N, F, ...) und gehen als Raw-CAN parallel zum CANopen-Verkehr
  * auf denselben Bus; empfangene Frames kommen bei offenem Kanal als
- * "t..."-Zeilen zurueck. Details: jsonapi_slcan.h. Der Port laesst
+ * "t..."-Zeilen zurueck. Details: slcan.h. Der Port laesst
  * sich damit auch direkt an slcand/python-can haengen.
  *
  * Antworten/Events (Geraet -> Webapp), je eine NDJSON-Zeile:
  *   {"gtwa":{...}}  {"pdo":{...}}  {"fw":{...}}  {"repl":...}  {"nodstat":[...]}
  *   {"err":"..."}
  *
- * Threading: jsonapi_input() darf aus beliebigen Threads/Callbacks
+ * Threading: ndjson_input() darf aus beliebigen Threads/Callbacks
  * kommen (Ringpuffer); die gesamte Verarbeitung inkl. aller Ausgaben
- * an die Senke laeuft in jsonapi_poll() - zyklisch aus einem
+ * an die Senke laeuft in ndjson_poll() - zyklisch aus einem
  * App-Worker rufen (z.B. alle 10 ms). Ein "fw send" blockiert poll()
  * fuer die Dauer des Transfers; PDO-Events puffern derweil.
  */
 
-#ifndef CB_JSONAPI_H_
-#define CB_JSONAPI_H_
+#ifndef CB_NDJSON_H_
+#define CB_NDJSON_H_
 
 #include <stddef.h>
 #include <stdint.h>
 
-#include "jsonapi_fw.h"
+#include "ndjson_fw.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,43 +86,43 @@ extern "C" {
 
 typedef struct {
     /* Muss alle Bytes uebernehmen (blockieren erlaubt); wird nur aus
-     * jsonapi_poll() gerufen. */
+     * ndjson_poll() gerufen. */
     void (*write)(void* user, const void* buf, size_t len);
     void* user;
-} jsonapi_sink_t;
+} ndjson_sink_t;
 
 /* Initialisieren und am co_node-Gateway (GTWA) sowie am Raw-RX-Hook
  * (PDO-Monitor) anmelden. fw_ops darf NULL sein (fw-Kommandos melden
  * dann einen Fehler). Vor cb_co_start() oder danach - beides ok. */
-int jsonapi_init(const jsonapi_sink_t* sink, const jsonapi_fw_ops_t* fw_ops);
+int ndjson_init(const ndjson_sink_t* sink, const ndjson_fw_ops_t* fw_ops);
 
 /* Empfangene Bytes vom Transport einspeisen (beliebiger Kontext). */
-void jsonapi_input(const void* buf, size_t len);
+void ndjson_input(const void* buf, size_t len);
 
 /* Verarbeitung: Requests ausfuehren, GTWA-Antworten und PDO-Events
  * ausgeben. Zyklisch rufen. */
-void jsonapi_poll(void);
+void ndjson_poll(void);
 
 /* --- optionale Berry-REPL ------------------------------------------
  *
  * Executor fuer {"repl": ...}: fuehrt code synchron aus (laeuft im
  * poll-Thread; braucht dort entsprechend Stack fuer den
  * Berry-Compiler). Ausgabetext waehrend der Ausfuehrung ueber
- * jsonapi_repl_out() liefern - typisch, indem die Berry-Senke
+ * ndjson_repl_out() liefern - typisch, indem die Berry-Senke
  * (cb_berry_set_sink bzw. be_writebuffer-Routing der App) dorthin
  * zeigt. Rueckgabe 0 = ok. */
-typedef int (*jsonapi_repl_exec_t)(void* user, const char* code);
+typedef int (*ndjson_repl_exec_t)(void* user, const char* code);
 
 /* Executor registrieren; NULL deaktiviert {"repl": ...} wieder. */
-void jsonapi_set_repl(jsonapi_repl_exec_t exec, void* user);
+void ndjson_set_repl(ndjson_repl_exec_t exec, void* user);
 
 /* Ausgabetext des gerade laufenden repl-Kommandos (nur aus dem
- * Executor-Kontext rufen); wird zeilenweise als {"repl":…}
- * ausgegeben (Zahl unquoted, sonst String). */
-void jsonapi_repl_out(const char* buf, size_t len);
+ * Executor-Kontext rufen); wird zeilenweise als
+ * {"repl":{"<seq>":…}} ausgegeben (Zahl unquoted, sonst String). */
+void ndjson_repl_out(const char* buf, size_t len);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* CB_JSONAPI_H_ */
+#endif /* CB_NDJSON_H_ */

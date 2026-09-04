@@ -89,7 +89,7 @@ zephyr_close(void) {
  * TX-Complete - also auf das Bus-ACK. Auf einem Bus ohne zweiten
  * Knoten (fehlender Transceiver, offener Stecker) retransmittiert der
  * Controller endlos und der sendende Thread haengt fuer immer: der
- * CANopen-Mainline-Thread beim ersten Heartbeat, der jsonapi-Poll-
+ * CANopen-Mainline-Thread beim ersten Heartbeat, der ndjson-Poll-
  * Thread beim ersten SLCAN-/gtwa-Frame. Deshalb asynchron senden -
  * "eingereiht" gilt als Erfolg, das Timeout begrenzt nur das Warten
  * auf einen freien TX-Mailbox-Platz. */

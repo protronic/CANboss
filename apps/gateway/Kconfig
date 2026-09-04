@@ -19,7 +19,7 @@ config CANBOSS_GW_FW_SLOT_SIZE
 	int "Groesse je Firmware-Slot in Bytes"
 	default 65536
 	help
-	  RAM-Backend (lib/jsonapi/jsonapi_fw_ram.c) - nach Reset leer.
+	  RAM-Backend (lib/host_io/ndjson_fw_ram.c) - nach Reset leer.
 	  STM32H573 hat 640 KiB SRAM; native_sim ist unkritisch.
 
 config CANBOSS_GW_BERRY

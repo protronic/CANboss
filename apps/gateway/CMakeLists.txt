@@ -1,4 +1,4 @@
-# CANboss-Gateway: NDJSON-Interface fuer Webapps (lib/jsonapi) ueber
+# CANboss-Gateway: NDJSON-Interface fuer Webapps (lib/host_io) ueber
 # eine UART (native_sim: PTY/stdio, stm32h573i_dk: USB-CDC-ACM am
 # USB-Stecker des Boards; ST-Link-VCP siehe overlays/stlink_vcp.*).
 #
@@ -16,10 +16,10 @@ set(CBLIB ${REPO_ROOT}/lib)
 target_sources(app PRIVATE
     src/main.c
     # NDJSON-Dispatcher + SLCAN-Bruecke + RAM-Firmware-Slots
-    ${CBLIB}/jsonapi/jsonapi.c
-    ${CBLIB}/jsonapi/jsonapi_json.c
-    ${CBLIB}/jsonapi/jsonapi_slcan.c
-    ${CBLIB}/jsonapi/jsonapi_fw_ram.c
+    ${CBLIB}/host_io/ndjson.c
+    ${CBLIB}/host_io/ndjson_parse.c
+    ${CBLIB}/host_io/slcan.c
+    ${CBLIB}/host_io/ndjson_fw_ram.c
     # gemeinsame CANopen-Schicht
     ${CBLIB}/canopen/can_if.c
     ${CBLIB}/canopen/can_zephyr.c
@@ -52,7 +52,7 @@ target_sources_ifdef(CONFIG_CANBOSS_GW_USB app PRIVATE
 
 target_include_directories(app PRIVATE
     src
-    ${CBLIB}/jsonapi
+    ${CBLIB}/host_io
     ${CBLIB}/usbc
     ${CBLIB}/canopen
     ${CBLIB}/canopen/port

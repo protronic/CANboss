@@ -1,7 +1,7 @@
 /**
- * jsonapi_json.h
+ * ndjson_parse.h
  *
- * Minimaler JSON-Leser fuer das jsonapi-Protokoll (lib/jsonapi):
+ * Minimaler JSON-Leser fuer das ndjson-Protokoll (lib/host_io):
  * arbeitet zerstoerungsfrei auf Text-Spannen (kein DOM, keine
  * Allokation). Unterstuetzt Objekte, Arrays, Strings (inkl. \uXXXX),
  * Zahlen, true/false/null - genug fuer die Kommandos der Webapp.
@@ -11,8 +11,8 @@
  * nicht.
  */
 
-#ifndef CB_JSONAPI_JSON_H_
-#define CB_JSONAPI_JSON_H_
+#ifndef CB_NDJSON_PARSE_H_
+#define CB_NDJSON_PARSE_H_
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -72,4 +72,4 @@ size_t cj_quote(const char* s, size_t s_len, char* out, size_t out_size);
 }
 #endif
 
-#endif /* CB_JSONAPI_JSON_H_ */
+#endif /* CB_NDJSON_PARSE_H_ */

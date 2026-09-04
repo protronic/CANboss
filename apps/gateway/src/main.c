@@ -1,5 +1,5 @@
 /**
- * CANboss-Gateway: NDJSON-Interface (lib/jsonapi) fuer Webapps.
+ * CANboss-Gateway: NDJSON-Interface (lib/host_io) fuer Webapps.
  *
  * Transport ist eine UART, ausgewaehlt ueber das chosen
  * "canboss,jsonapi-uart" (Fallback: zephyr,console):
@@ -11,7 +11,7 @@
  *
  * CANopen laeuft mit dem canboss_master-OD (Default-Node 126) auf dem
  * chosen zephyr,canbus; das CANopenNode-Gateway (CiA 309-3) wird ueber
- * CNT_GTWA=1 aktiviert und von jsonapi als {"gtwa": ...} angesprochen.
+ * CNT_GTWA=1 aktiviert und von ndjson als {"gtwa": ...} angesprochen.
  */
 
 #include <zephyr/kernel.h>
@@ -30,7 +30,7 @@ LOG_MODULE_REGISTER(canboss_gw, LOG_LEVEL_INF);
 
 #include "co_node.h"
 #include "canboss_master.h" /* nach co_node.h (CANopenNode-Typen) */
-#include "jsonapi.h"
+#include "ndjson.h"
 #include "usb_cdc.h"
 
 #ifdef CANBOSS_BERRY
@@ -58,11 +58,11 @@ sink_write(void* user, const void* buf, size_t len) {
 #ifdef CANBOSS_BERRY
 /* {"repl": ...}: canboss_berry_exec() im poll-Kontext; die
  * Berry-Ausgabe (be_writebuffer -> lib/berry_od/berry_port.c -> Senke)
- * geht an jsonapi_repl_out und damit als {"repl":…} raus. */
+ * geht an ndjson_repl_out und damit als {"repl":…} raus. */
 static void
 berry_sink(void* user, const char* buf, size_t len) {
     (void)user;
-    jsonapi_repl_out(buf, len);
+    ndjson_repl_out(buf, len);
 }
 
 static int
@@ -91,14 +91,14 @@ main(void) {
         LOG_ERR("USB-CDC-Init fehlgeschlagen (%d) - NDJSON-Transport tot", usb_err);
     }
 
-    jsonapi_sink_t sink = {.write = sink_write, .user = NULL};
+    ndjson_sink_t sink = {.write = sink_write, .user = NULL};
 
-    (void)jsonapi_init(&sink, &jsonapi_fw_ram);
+    (void)ndjson_init(&sink, &ndjson_fw_ram);
 
 #ifdef CANBOSS_BERRY
     canboss_berry_init(canboss_master);
     cb_berry_set_sink(berry_sink, NULL);
-    jsonapi_set_repl(repl_exec, NULL);
+    ndjson_set_repl(repl_exec, NULL);
     LOG_INF("Berry-REPL bereit");
 #endif
 
@@ -107,7 +107,7 @@ main(void) {
 
     memset(&cfg, 0, sizeof(cfg));
     canboss_master_INIT_CONFIG(cfg);
-    cfg.CNT_GTWA = 1; /* Gateway-ASCII aktivieren (co_node/jsonapi) */
+    cfg.CNT_GTWA = 1; /* Gateway-ASCII aktivieren (co_node/ndjson) */
 
     if (!IS_ENABLED(CONFIG_CANBOSS_GW_CANOPEN)) {
         LOG_WRN("CANopen deaktiviert (CONFIG_CANBOSS_GW_CANOPEN=n) - nur USB/NDJSON");
@@ -138,9 +138,9 @@ main(void) {
         }
 
         while (uart_poll_in(gw_uart, &c) == 0) {
-            jsonapi_input(&c, 1);
+            ndjson_input(&c, 1);
         }
-        jsonapi_poll();
+        ndjson_poll();
         k_sleep(K_MSEC(2));
     }
     return 0;

@@ -1,8 +1,8 @@
 /**
- * jsonapi_json.c - minimaler JSON-Leser, siehe jsonapi_json.h
+ * ndjson_parse.c - minimaler JSON-Leser, siehe ndjson_parse.h
  */
 
-#include "jsonapi_json.h"
+#include "ndjson_parse.h"
 
 #include <stdlib.h>
 #include <string.h>
