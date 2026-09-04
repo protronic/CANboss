@@ -52,7 +52,8 @@ void canboss_berry_register(void* vm /* bvm* */, OD_t* local_od);
 void canboss_berry_set_nodes(const uint8_t* ids, uint16_t count);
 
 /* Skripttext ausfuehren; Ausgabe (print/Fehler) geht an die aktuelle
- * Senke. Rueckgabe 0 bei Erfolg. Thread-sicher (Mutex). */
+ * Senke. Fehler nur als "typ: meldung", ohne stack traceback.
+ * Rueckgabe 0 bei Erfolg. Thread-sicher (Mutex). */
 int canboss_berry_exec(const char* code);
 
 /* Ausgabesenke der VM (siehe berry_port.c) */

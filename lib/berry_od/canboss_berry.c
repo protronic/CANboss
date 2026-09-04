@@ -384,7 +384,21 @@ canboss_berry_exec(const char* code) {
     }
 
     if (ret != 0) {
-        be_dumpexcept(cb_vm); /* Ausgabe ueber be_writebuffer -> Senke */
+        /* Nur Typ und Meldung, kein stack traceback (NDJSON-repl). */
+        if (be_top(cb_vm) >= 2) {
+            const char* type = be_tostring(cb_vm, -2);
+            const char* arg = be_tostring(cb_vm, -1);
+
+            if (type != NULL && type[0] != '\0') {
+                be_writebuffer(type, strlen(type));
+                if (arg != NULL && arg[0] != '\0') {
+                    be_writebuffer(": ", 2);
+                    be_writebuffer(arg, strlen(arg));
+                }
+                be_writebuffer("\n", 1);
+            }
+            be_pop(cb_vm, 2);
+        }
     } else {
         if (!be_isnil(cb_vm, -1)) {
             const char* s = be_tostring(cb_vm, -1);
