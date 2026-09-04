@@ -17,8 +17,9 @@
 
 #define CO_CONFIG_GTW                                                                                                  \
     (CO_CONFIG_GTW_ASCII | CO_CONFIG_GTW_ASCII_SDO | CO_CONFIG_GTW_ASCII_NMT | CO_CONFIG_GTW_ASCII_ERROR_DESC          \
-     | CO_CONFIG_GTW_ASCII_PRINT_HELP)
+     | CO_CONFIG_GTW_ASCII_LOG | CO_CONFIG_GTW_ASCII_PRINT_HELP)
 #define CO_CONFIG_GTWA_COMM_BUF_SIZE 1000
+#define CO_CONFIG_GTWA_LOG_BUF_SIZE  256 /* Default nur unter CO_DOXYGEN */
 
 /* CO_gateway_ascii.c nutzt das Makro ohne eigenen Default (nur unter
  * CO_DOXYGEN definiert) - ohne diese Zeile bricht der Build ab, sobald

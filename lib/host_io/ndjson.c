@@ -109,6 +109,8 @@ static ndjson_repl_exec_t repl_exec;
 static void* repl_user;
 static char repl_line[256];
 static size_t repl_len;
+static unsigned repl_seq;     /* naechste zu vergebende Sequenz, Start 0 */
+static unsigned repl_cur_seq; /* Sequenz des gerade laufenden Kommandos */
 
 /* ------------------------------------------------------------------ */
 /* Ausgabe                                                             */
@@ -322,7 +324,9 @@ gtwa_fmt_kv(char* buf, size_t buf_size, uint32_t seq, const char* val, size_t va
 /* Eine Kommandozeile (ohne '\n') ins Gateway schieben.
  * CANopenNode (CiA 309-3) verlangt zwingend "["<sequence>"]" als erstes
  * Token; ohne das kommt ERROR:101. {"gtwa":"help"} und die Webapp-Hilfe
- * liefern nur das Kommando — Sequenz hier ergaenzen.
+ * liefern nur das Kommando — Sequenz hier ergaenzen. help/log/led
+ * antworten trotzdem ohne [seq]; der Aufrufer darf dann nicht auf
+ * eine Sequenzantwort warten (siehe gtwa_finish_unseq).
  * seq_out (optional) erhaelt die verwendete Sequenznummer.
  * Rueckgabe true, wenn die Zeile im Gateway-Fifo liegt. */
 static bool
@@ -397,6 +401,58 @@ gtwa_emit_one(uint32_t seq, const char* val, size_t val_len) {
     }
 }
 
+/* Kommando-Token (nach optionalem [seq]) ohne Gross/Klein. */
+static bool
+gtwa_tok_is(const char* s, size_t n, const char* lit) {
+    size_t i;
+
+    for (i = 0; lit[i] != '\0'; i++) {
+        char c;
+
+        if (i >= n) {
+            return false;
+        }
+        c = s[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = (char)(c - 'A' + 'a');
+        }
+        if (c != lit[i]) {
+            return false;
+        }
+    }
+    return i == n;
+}
+
+/* help/log/led liefern keine "[seq] …"-Antwort (nur Freitext).
+ * led laeuft als Strom weiter (*stream). */
+static bool
+gtwa_unseq_cmd(const char* cmd, size_t len, bool* stream) {
+    uint32_t seq;
+    const char* rest;
+    size_t rest_len;
+    const char* p = cmd;
+    size_t n = len;
+    size_t t = 0;
+
+    *stream = false;
+    if (gtwa_split_seq(cmd, len, &seq, &rest, &rest_len)) {
+        p = rest;
+        n = rest_len;
+    }
+    while (n > 0 && (*p == ' ' || *p == '\t')) {
+        p++;
+        n--;
+    }
+    while (t < n && p[t] != ' ' && p[t] != '\t') {
+        t++;
+    }
+    if (gtwa_tok_is(p, t, "led")) {
+        *stream = true;
+        return true;
+    }
+    return gtwa_tok_is(p, t, "help") || gtwa_tok_is(p, t, "log");
+}
+
 /* Eine fertige GTWA-Antwortzeile: in den offenen Batch legen oder
  * sofort als {"gtwa":{"seq":…}} ausgeben. Zeilen ohne [seq] (help)
  * kommen als String-Value. */
@@ -430,6 +486,9 @@ gtwa_handle_line(const char* line, size_t len) {
         return;
     }
 
+    if (gtwa_unseq_wait != UINT32_MAX) {
+        gtwa_unseq_lines++;
+    }
     {
         char q[420];
 
@@ -438,28 +497,88 @@ gtwa_handle_line(const char* line, size_t len) {
     }
 }
 
-/* GTWA-Antwortbytes zu Zeilen buendeln und als Event ausgeben */
-static void
+/* GTWA-Antwortbytes zu Zeilen buendeln und als Event ausgeben.
+ * Rueckgabe true, wenn mindestens ein Byte aus dem Ring kam. */
+static bool
 gtwa_pump(void) {
     uint8_t c;
+    bool got = false;
 
     while (ring_buf_get(&gtwa_rb, &c, 1) == 1) {
-        if (c == '\r') {
-            continue;
-        }
-        if (c != '\n') {
-            if (gtwa_len < sizeof(gtwa_line) - 1) {
-                gtwa_line[gtwa_len++] = (char)c;
+        got = true;
+        /* "led" schreibt nur CR (Terminal-Ueberschreiben), help/log LF
+         * bzw. CR+LF. Beides ist eine Zeile; leeres LF nach CR ignorieren. */
+        if (c == '\r' || c == '\n') {
+            if (gtwa_len > 0) {
+                gtwa_handle_line(gtwa_line, gtwa_len);
+                gtwa_len = 0;
             }
             continue;
         }
-        if (gtwa_len == 0) {
-            continue;
+        if (gtwa_len < sizeof(gtwa_line) - 1) {
+            gtwa_line[gtwa_len++] = (char)c;
         }
-
-        gtwa_handle_line(gtwa_line, gtwa_len);
-        gtwa_len = 0;
     }
+    return got;
+}
+
+/* help/log: Text ohne [seq] abwarten (CANopen-Mainline fuellt den Ring). */
+static void
+gtwa_drain(uint32_t quiet_ms, uint32_t max_ms) {
+    uint32_t t0 = k_uptime_get_32();
+    uint32_t last = t0;
+    bool seen = false;
+
+    for (;;) {
+        uint32_t now = k_uptime_get_32();
+
+        if (gtwa_pump()) {
+            last = now;
+            seen = true;
+        }
+        if ((int32_t)(now - t0) >= (int32_t)max_ms) {
+            break;
+        }
+        if (seen && (int32_t)(now - last) >= (int32_t)quiet_ms) {
+            break;
+        }
+        k_sleep(K_MSEC(1));
+    }
+}
+
+static void
+gtwa_drain_first(uint32_t max_ms) {
+    uint32_t t0 = k_uptime_get_32();
+
+    while (gtwa_unseq_lines == 0 && !gtwa_unseq_got) {
+        (void)gtwa_pump();
+        if (gtwa_unseq_lines > 0 || gtwa_unseq_got) {
+            break;
+        }
+        if ((int32_t)(k_uptime_get_32() - t0) >= (int32_t)max_ms) {
+            break;
+        }
+        k_sleep(K_MSEC(1));
+    }
+}
+
+static void
+gtwa_finish_unseq(uint32_t seq, bool stream) {
+    gtwa_unseq_wait = seq;
+    gtwa_unseq_got = false;
+    gtwa_unseq_lines = 0;
+    if (stream) {
+        /* erste Statuszeile (endet mit CR), danach weiter per poll */
+        gtwa_drain_first(CB_NDJSON_GTWA_LED_WAIT_MS);
+    } else {
+        gtwa_drain(CB_NDJSON_GTWA_DRAIN_QUIET_MS, CB_NDJSON_GTWA_BATCH_WAIT_MS);
+    }
+    /* Sequenz schliessen, sonst wartet der Batch/Client auf [seq].
+     * Kam schon eine [seq]-Antwort (z.B. ERROR:100), kein zweites OK. */
+    if (!gtwa_unseq_got) {
+        gtwa_emit_one(seq, "OK", 2);
+    }
+    gtwa_unseq_wait = UINT32_MAX;
 }
 
 static void
@@ -484,7 +603,7 @@ gtwa_batch_emit(void) {
 
 /* Wartet auf die zum Array gehoerenden [seq]-Antworten und sendet
  * genau eine NDJSON-Zeile {"gtwa":{"seq":…, …}}. Blockiert poll
- * (wie "fw send"); help/led-Zeilen ohne [seq] gehen weiter sofort raus. */
+ * (wie "fw send"). help/log/led kommen nicht hierher (gtwa_finish_unseq). */
 static void
 gtwa_batch_wait(void) {
     uint32_t deadline = k_uptime_get_32() + gtwa_batch_n * (uint32_t)CB_NDJSON_GTWA_BATCH_WAIT_MS;
@@ -857,17 +976,42 @@ fw_handle(cj_t obj) {
 
 static unsigned repl_emitted;
 
+static unsigned
+repl_next_seq(void) {
+    unsigned s = repl_seq;
+
+    repl_seq = (repl_seq + 1U) % 10000U;
+    return s;
+}
+
+/* Optional "[n] code" wie bei gtwa; sonst Autozähler. */
+static void
+repl_bind_seq(const char* cmd, size_t len, const char** body, size_t* body_len) {
+    uint32_t seq;
+    const char* rest;
+    size_t rest_len;
+
+    while (len > 0 && (*cmd == ' ' || *cmd == '\t')) {
+        cmd++;
+        len--;
+    }
+    if (gtwa_split_seq(cmd, len, &seq, &rest, &rest_len) && seq <= 9999U) {
+        repl_cur_seq = seq;
+        *body = rest;
+        *body_len = rest_len;
+        return;
+    }
+    repl_cur_seq = repl_next_seq();
+    *body = cmd;
+    *body_len = len;
+}
+
 static void
 repl_emit(const char* s, size_t len) {
-    char num[40];
+    char kv[240];
 
-    if (gtwa_is_number(s, len, num, sizeof(num))) {
-        emitf("{\"repl\":%s}", num);
-    } else {
-        char q[420];
-
-        cj_quote(s, len, q, sizeof(q));
-        emitf("{\"repl\":%s}", q);
+    if (gtwa_fmt_kv(kv, sizeof(kv), repl_cur_seq, s, len) > 0) {
+        emitf("{\"repl\":{%s}}", kv);
     }
     repl_emitted++;
 }
@@ -912,8 +1056,19 @@ ndjson_set_repl(ndjson_repl_exec_t exec, void* user) {
 }
 
 static void
-repl_run(const char* code) {
+repl_run(const char* cmd, size_t len) {
+    const char* body;
+    size_t body_len;
+    char code[512];
     int ret;
+
+    repl_bind_seq(cmd, len, &body, &body_len);
+    if (body_len >= sizeof(code)) {
+        repl_emit_msg("Kommando zu lang");
+        return;
+    }
+    memcpy(code, body, body_len);
+    code[body_len] = '\0';
 
     repl_emitted = 0;
     ret = repl_exec(repl_user, code);
@@ -925,32 +1080,54 @@ repl_run(const char* code) {
 
 static void
 repl_handle(cj_t v) {
-    static char code[512];
+    static char cmd[512];
+
+    if (cj_is_obj(v)) {
+        cj_t b;
+        int64_t n;
+
+        if (!cj_obj_get(v, "seq", &b) || !cj_as_i64(b, &n) || n < 0 || n > 9999) {
+            repl_cur_seq = repl_next_seq();
+            repl_emit_msg("seq 0..9999 erwartet");
+            return;
+        }
+        repl_seq = (unsigned)n;
+        emitf("{\"repl\":{\"seq\":%u}}", repl_seq);
+        return;
+    }
 
     if (repl_exec == NULL) {
+        repl_cur_seq = repl_next_seq();
         repl_emit_msg("nicht verfuegbar (Firmware ohne Berry)");
         return;
     }
 
     if (cj_is_str(v)) {
-        if (cj_as_str(v, code, sizeof(code)) == (size_t)-1) {
+        size_t n = cj_as_str(v, cmd, sizeof(cmd));
+
+        if (n == (size_t)-1) {
+            repl_cur_seq = repl_next_seq();
             repl_emit_msg("Kommando zu lang");
         } else {
-            repl_run(code);
+            repl_run(cmd, n);
         }
     } else if (cj_is_arr(v)) {
         size_t it = 0;
         cj_t e;
 
         while (cj_arr_next(v, &it, &e)) {
-            if (cj_as_str(e, code, sizeof(code)) == (size_t)-1) {
+            size_t n = cj_as_str(e, cmd, sizeof(cmd));
+
+            if (n == (size_t)-1) {
+                repl_cur_seq = repl_next_seq();
                 repl_emit_msg("Kommando zu lang");
             } else {
-                repl_run(code);
+                repl_run(cmd, n);
             }
         }
     } else {
-        repl_emit_msg("String oder Array von Strings erwartet");
+        repl_cur_seq = repl_next_seq();
+        repl_emit_msg("String, Array oder {\"seq\":n} erwartet");
     }
 }
 
@@ -971,9 +1148,18 @@ handle_request(const char* line, size_t len) {
 
         if (cj_is_str(v)) {
             size_t n = cj_as_str(v, cmd, sizeof(cmd));
+            uint32_t seq = 0;
+            bool stream = false;
 
-            if (n != (size_t)-1 && n > 0) {
-                (void)gtwa_send_line(cmd, n, NULL);
+            if (n == (size_t)-1 || n == 0) {
+                return;
+            }
+            if (!gtwa_send_line(cmd, n, &seq)) {
+                return;
+            }
+            if (gtwa_unseq_cmd(cmd, n, &stream)) {
+                /* help/log/led: keine [seq]-Antwort, sonst ERROR:timeout */
+                gtwa_finish_unseq(seq, stream);
             }
         } else if (cj_is_arr(v)) {
             size_t it = 0;
@@ -985,6 +1171,7 @@ handle_request(const char* line, size_t len) {
             while (cj_arr_next(v, &it, &e)) {
                 size_t n = cj_as_str(e, cmd, sizeof(cmd));
                 uint32_t seq = 0;
+                bool stream = false;
 
                 if (n == (size_t)-1 || n == 0) {
                     continue;
@@ -993,6 +1180,13 @@ handle_request(const char* line, size_t len) {
                     if (gtwa_batch_n > 0) {
                         gtwa_batch_wait();
                     }
+                    continue;
+                }
+                if (gtwa_unseq_cmd(cmd, n, &stream)) {
+                    if (gtwa_batch_n > 0) {
+                        gtwa_batch_wait();
+                    }
+                    gtwa_finish_unseq(seq, stream);
                     continue;
                 }
                 gtwa_batch_seq[gtwa_batch_n] = seq;
