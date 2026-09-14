@@ -5,7 +5,9 @@
  * (src/can_if.h). Struktur nach CANopenNode/example/CO_driver_blank.c;
  * gesendet wird direkt ueber das Backend (SocketCAN heute, seriell
  * spaeter), empfangen ueber CO_CANrxDispatch() aus dem RX-Thread in
- * src/co_node.c.
+ * src/co_node.c. Busfehler (TEC/REC) kommen aus backend->get_errors()
+ * und werden in CO_CANmodule_process() wie im Blank-Treiber auf
+ * CANerrorStatus abgebildet.
  */
 
 #include "301/CO_driver.h"
@@ -183,9 +185,63 @@ CO_CANclearPendingSyncPDOs(CO_CANmodule_t* CANmodule) {
 
 void
 CO_CANmodule_process(CO_CANmodule_t* CANmodule) {
-    /* Busfehler meldet das Backend direkt beim Senden/Empfangen;
-     * SocketCAN-Errorframes werden im Backend verworfen. */
-    (void)CANmodule;
+    const cb_can_backend_t* backend;
+    cb_can_err_t counters;
+    uint32_t err;
+    uint16_t txErrors;
+    uint16_t rxErrors;
+    uint16_t overflow;
+
+    if (CANmodule == NULL) {
+        return;
+    }
+
+    backend = (const cb_can_backend_t*)CANmodule->CANptr;
+    if (backend == NULL || backend->get_errors == NULL || backend->get_errors(&counters) != 0) {
+        return;
+    }
+
+    txErrors = counters.tx_errors;
+    rxErrors = counters.rx_errors;
+    overflow = counters.overflow;
+    err = ((uint32_t)txErrors << 16) | ((uint32_t)rxErrors << 8) | (uint32_t)(overflow & 0xFFU);
+
+    /* Abbildung wie CANopenNode/example/CO_driver_blank.c */
+    if (CANmodule->errOld != err) {
+        uint16_t status = CANmodule->CANerrorStatus;
+
+        CANmodule->errOld = err;
+
+        if (txErrors >= 256U) {
+            status |= CO_CAN_ERRTX_BUS_OFF;
+        } else {
+            status &= 0xFFFF
+                      ^ (CO_CAN_ERRTX_BUS_OFF | CO_CAN_ERRRX_WARNING | CO_CAN_ERRRX_PASSIVE | CO_CAN_ERRTX_WARNING
+                         | CO_CAN_ERRTX_PASSIVE);
+
+            if (rxErrors >= 128U) {
+                status |= CO_CAN_ERRRX_WARNING | CO_CAN_ERRRX_PASSIVE;
+            } else if (rxErrors >= 96U) {
+                status |= CO_CAN_ERRRX_WARNING;
+            }
+
+            if (txErrors >= 128U) {
+                status |= CO_CAN_ERRTX_WARNING | CO_CAN_ERRTX_PASSIVE;
+            } else if (txErrors >= 96U) {
+                status |= CO_CAN_ERRTX_WARNING;
+            }
+
+            if ((status & CO_CAN_ERRTX_PASSIVE) == 0) {
+                status &= 0xFFFF ^ CO_CAN_ERRTX_OVERFLOW;
+            }
+        }
+
+        if (overflow != 0U) {
+            status |= CO_CAN_ERRRX_OVERFLOW;
+        }
+
+        CANmodule->CANerrorStatus = status;
+    }
 }
 
 void

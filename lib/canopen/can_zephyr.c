@@ -13,12 +13,15 @@
 #include "can_if.h"
 
 #include <errno.h>
+#include <stddef.h>
 #include <string.h>
 
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/can.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/sys_io.h>
 
 CAN_MSGQ_DEFINE(cb_can_rx_msgq, 32);
 
@@ -144,10 +147,132 @@ zephyr_recv(cb_can_frame_t* frame, int timeout_ms) {
     return 1;
 }
 
+#if DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_canbus), st_stm32_fdcan)
+/* Ein ECR-Lesezugriff (TEC/REC/RP/CEL). PSR.EW/EP unterscheidet TX
+ * und RX nicht; die Zaehler schon. Lesen loescht CEL, daher Cache
+ * fuer update_od / OD 0x2011. */
+static uint8_t fdcan_tec;
+static uint8_t fdcan_rec;
+static uint8_t fdcan_rp;
+static uint8_t fdcan_ecr_valid;
+static atomic_t fdcan_cel_accum;
+
+static void
+fdcan_read_ecr(uint8_t* tec, uint8_t* rec, bool* rp, uint8_t* cel) {
+    const uintptr_t ecr_addr =
+        DT_REG_ADDR(DT_CHOSEN(zephyr_canbus)) + offsetof(FDCAN_GlobalTypeDef, ECR);
+    uint32_t ecr = sys_read32((mem_addr_t)ecr_addr);
+
+    *tec = (uint8_t)((ecr & FDCAN_ECR_TEC) >> FDCAN_ECR_TEC_Pos);
+    *rec = (uint8_t)((ecr & FDCAN_ECR_REC) >> FDCAN_ECR_REC_Pos);
+    *rp = (ecr & FDCAN_ECR_RP) != 0U;
+    *cel = (uint8_t)((ecr & FDCAN_ECR_CEL) >> FDCAN_ECR_CEL_Pos);
+}
+
+int
+cb_can_zephyr_take_ecr(uint8_t* tec, uint8_t* rec, bool* rp, uint8_t* cel) {
+    atomic_val_t acc;
+
+    if (fdcan_ecr_valid == 0U) {
+        return -1;
+    }
+    if (tec != NULL) {
+        *tec = fdcan_tec;
+    }
+    if (rec != NULL) {
+        *rec = fdcan_rec;
+    }
+    if (rp != NULL) {
+        *rp = fdcan_rp != 0U;
+    }
+    acc = atomic_set(&fdcan_cel_accum, 0);
+    if (cel != NULL) {
+        *cel = acc > 255 ? (uint8_t)255 : (uint8_t)acc;
+    }
+    return 0;
+}
+#else
+int
+cb_can_zephyr_take_ecr(uint8_t* tec, uint8_t* rec, bool* rp, uint8_t* cel) {
+    (void)tec;
+    (void)rec;
+    (void)rp;
+    (void)cel;
+    return -1;
+}
+#endif /* st_stm32_fdcan */
+
+static int
+zephyr_get_errors(cb_can_err_t* err) {
+    enum can_state state;
+
+    if (err == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    err->overflow = 0U;
+
+    if (!device_is_ready(cb_can_dev)) {
+        errno = ENODEV;
+        return -1;
+    }
+
+#if DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_canbus), st_stm32_fdcan)
+    {
+        uint8_t tec;
+        uint8_t rec;
+        uint8_t cel;
+        bool rp;
+
+        /* PSR nur fuer Bus-Off (TEC ist 8 Bit, saturiert bei 255). */
+        if (can_get_state(cb_can_dev, &state, NULL) != 0) {
+            errno = EIO;
+            return -1;
+        }
+        fdcan_read_ecr(&tec, &rec, &rp, &cel);
+        fdcan_tec = tec;
+        fdcan_rec = rec;
+        fdcan_rp = rp ? 1U : 0U;
+        fdcan_ecr_valid = 1U;
+        if (cel != 0U) {
+            atomic_val_t prev = atomic_add(&fdcan_cel_accum, (atomic_val_t)cel);
+            if (prev + (atomic_val_t)cel > 255) {
+                atomic_set(&fdcan_cel_accum, 255);
+            }
+        }
+
+        /* Getrennte TX-/RX-Bits: TEC und REC (RP = RX-Passive, REC=127). */
+        err->tx_errors = tec;
+        err->rx_errors = rp ? 128U : rec;
+        if (state == CAN_STATE_BUS_OFF) {
+            err->tx_errors = 256U;
+        }
+    }
+#else
+    {
+        struct can_bus_err_cnt err_cnt;
+
+        if (can_get_state(cb_can_dev, &state, &err_cnt) != 0) {
+            errno = EIO;
+            return -1;
+        }
+        err->tx_errors = err_cnt.tx_err_cnt;
+        err->rx_errors = err_cnt.rx_err_cnt;
+        if (state == CAN_STATE_BUS_OFF) {
+            err->tx_errors = 256U;
+        }
+    }
+#endif
+
+    return 0;
+}
+
 const cb_can_backend_t cb_can_zephyr = {
     .name = "zephyr",
     .open = zephyr_open,
     .close = zephyr_close,
     .send = zephyr_send,
     .recv = zephyr_recv,
+    .get_errors = zephyr_get_errors,
 };

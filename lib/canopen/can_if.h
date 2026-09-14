@@ -9,8 +9,8 @@
  *   - "socketcan": Linux SocketCAN (can0, vcan0, ...) - implementiert
  *   - "serial":    serieller CAN-Adapter - vorbereitet (can_serial.c)
  *
- * Alle Funktionen arbeiten mit klassischen 11-Bit-Datenframes; mehr
- * braucht CANopen (CiA 301) nicht.
+ * Datenframes sind klassische 11-Bit-Frames (CiA 301). get_errors()
+ * liefert TEC/REC/RX-Overflow fuer CO_CANmodule_process().
  */
 
 #ifndef CB_CAN_IF_H_
@@ -30,6 +30,15 @@ typedef struct {
     uint8_t data[8];
 } cb_can_frame_t;
 
+/* Busfehlerzaehler, Schwellen wie im CANopenNode-Blank-Treiber:
+ * 96 Warning, 128 Passive, >= 256 Bus-Off. overflow != 0 setzt
+ * CO_CAN_ERRRX_OVERFLOW. */
+typedef struct {
+    uint16_t tx_errors;
+    uint16_t rx_errors;
+    uint16_t overflow;
+} cb_can_err_t;
+
 typedef struct {
     const char* name; /* Backend-Name fuer --backend */
 
@@ -47,6 +56,10 @@ typedef struct {
     /* Einen Frame empfangen. Rueckgabe 1 = Frame gelesen, 0 = Timeout,
      * -1 = Fehler. timeout_ms < 0 blockiert unbegrenzt. */
     int (*recv)(cb_can_frame_t* frame, int timeout_ms);
+
+    /* TEC/REC/Overflow lesen. Rueckgabe 0 bei Erfolg, sonst -1.
+     * Optional (NULL): CO_CANmodule_process() laesst die Bits unveraendert. */
+    int (*get_errors)(cb_can_err_t* err);
 } cb_can_backend_t;
 
 /* Backend anhand des Namens suchen (NULL wenn unbekannt). */
@@ -54,6 +67,14 @@ const cb_can_backend_t* cb_can_backend_find(const char* name);
 
 /* Verfuegbare Backend-Namen, NULL-terminiert (fuer --help). */
 const char* const* cb_can_backend_names(void);
+
+#ifdef __ZEPHYR__
+/* Letzter STM32-FDCAN-ECR ohne erneutes Registerlesen (CEL wuerde
+ * sonst geloescht). TEC/REC/RP vom letzten get_errors(); CEL ist seit
+ * dem letzten take_ecr() akkumuliert. Rueckgabe 0 wenn ein
+ * Schnappschuss vorliegt, sonst -1. */
+int cb_can_zephyr_take_ecr(uint8_t* tec, uint8_t* rec, bool* rp, uint8_t* cel);
+#endif
 
 #ifdef __cplusplus
 }

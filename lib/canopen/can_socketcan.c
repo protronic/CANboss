@@ -22,9 +22,80 @@
 #include <unistd.h>
 
 #include <linux/can.h>
+#include <linux/can/error.h>
 #include <linux/can/raw.h>
 
 static int can_fd = -1;
+
+/* Letzter bekannter Buszustand aus Errorframes (RX-Thread schreibt,
+ * Mainline liest in get_errors). */
+static volatile uint16_t sc_tx_errors;
+static volatile uint16_t sc_rx_errors;
+static volatile uint16_t sc_overflow;
+
+static void
+socketcan_err_reset(void) {
+    sc_tx_errors = 0;
+    sc_rx_errors = 0;
+    sc_overflow = 0;
+}
+
+/* Errorframe auf TEC/REC/Overflow abbilden (Schwellen wie Blank-Treiber). */
+static void
+socketcan_note_err(const struct can_frame* cf) {
+    uint32_t cls = cf->can_id & CAN_ERR_MASK;
+    uint16_t tx = sc_tx_errors;
+    uint16_t rx = sc_rx_errors;
+    uint16_t ov = sc_overflow;
+
+    if ((cls & CAN_ERR_CRTL) != 0U) {
+        uint8_t c = cf->data[1];
+
+        if ((c & CAN_ERR_CRTL_RX_OVERFLOW) != 0U && ov < 0xFFU) {
+            ov++;
+        }
+        if ((c & CAN_ERR_CRTL_ACTIVE) != 0U) {
+            tx = 0U;
+            rx = 0U;
+        } else {
+            if ((c & CAN_ERR_CRTL_TX_PASSIVE) != 0U) {
+                if (tx < 128U) {
+                    tx = 128U;
+                }
+            } else if ((c & CAN_ERR_CRTL_TX_WARNING) != 0U) {
+                if (tx < 96U) {
+                    tx = 96U;
+                }
+            }
+            if ((c & CAN_ERR_CRTL_RX_PASSIVE) != 0U) {
+                if (rx < 128U) {
+                    rx = 128U;
+                }
+            } else if ((c & CAN_ERR_CRTL_RX_WARNING) != 0U) {
+                if (rx < 96U) {
+                    rx = 96U;
+                }
+            }
+        }
+    }
+
+#ifdef CAN_ERR_CNT
+    if ((cls & CAN_ERR_CNT) != 0U) {
+        tx = cf->data[6];
+        rx = cf->data[7];
+    }
+#endif
+
+    if ((cls & CAN_ERR_BUSOFF) != 0U) {
+        tx = 256U;
+    } else if ((cls & CAN_ERR_RESTARTED) != 0U && tx >= 256U) {
+        tx = 0U;
+    }
+
+    sc_tx_errors = tx;
+    sc_rx_errors = rx;
+    sc_overflow = ov;
+}
 
 static int
 socketcan_open(const char* device, uint32_t bitrate) {
@@ -55,6 +126,17 @@ socketcan_open(const char* device, uint32_t bitrate) {
         return -1;
     }
 
+    /* Ohne ERR_FILTER liefert SocketCAN keine Errorframes. BUSERROR
+     * absichtlich aus: die Frames koennen den RX-Pfad fluten. */
+    {
+        can_err_mask_t err_mask = (CAN_ERR_CRTL | CAN_ERR_BUSOFF | CAN_ERR_RESTARTED);
+#ifdef CAN_ERR_CNT
+        err_mask |= CAN_ERR_CNT;
+#endif
+        (void)setsockopt(can_fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask, sizeof(err_mask));
+    }
+
+    socketcan_err_reset();
     return 0;
 }
 
@@ -64,6 +146,7 @@ socketcan_close(void) {
         close(can_fd);
         can_fd = -1;
     }
+    socketcan_err_reset();
 }
 
 static int
@@ -134,8 +217,12 @@ socketcan_recv(cb_can_frame_t* frame, int timeout_ms) {
         }
         return -1;
     }
-    if (n < (ssize_t)sizeof(cf) || (cf.can_id & (CAN_EFF_FLAG | CAN_ERR_FLAG))) {
+    if (n < (ssize_t)sizeof(cf) || (cf.can_id & CAN_EFF_FLAG)) {
         return 0; /* nur klassische 11-Bit-Frames */
+    }
+    if ((cf.can_id & CAN_ERR_FLAG) != 0U) {
+        socketcan_note_err(&cf);
+        return 0;
     }
 
     frame->id = (uint16_t)(cf.can_id & CAN_SFF_MASK);
@@ -145,10 +232,23 @@ socketcan_recv(cb_can_frame_t* frame, int timeout_ms) {
     return 1;
 }
 
+static int
+socketcan_get_errors(cb_can_err_t* err) {
+    if (err == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    err->tx_errors = sc_tx_errors;
+    err->rx_errors = sc_rx_errors;
+    err->overflow = sc_overflow;
+    return 0;
+}
+
 const cb_can_backend_t cb_can_socketcan = {
     .name = "socketcan",
     .open = socketcan_open,
     .close = socketcan_close,
     .send = socketcan_send,
     .recv = socketcan_recv,
+    .get_errors = socketcan_get_errors,
 };

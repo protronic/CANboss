@@ -44,10 +44,23 @@ serial_recv(cb_can_frame_t* frame, int timeout_ms) {
     return -1;
 }
 
+static int
+serial_get_errors(cb_can_err_t* err) {
+    if (err == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    err->tx_errors = 0;
+    err->rx_errors = 0;
+    err->overflow = 0;
+    return 0;
+}
+
 const cb_can_backend_t cb_can_serial = {
     .name = "serial",
     .open = serial_open,
     .close = serial_close,
     .send = serial_send,
     .recv = serial_recv,
+    .get_errors = serial_get_errors,
 };
